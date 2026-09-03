@@ -49,6 +49,20 @@ void context_init(
 }
 
 
+Context context_self(void)
+{
+    Context res = {0};
+
+    asm volatile(
+            "mov %%rsp, %0"
+            : "=r" (res.rsp)
+            :
+            :
+            );
+
+    return res;
+}
+
 Stack create_new_stack(void)
 {
     void* base_addr;
@@ -118,7 +132,7 @@ static void coroutine(void* arg)
 
 void test_ctx_switch(void)
 {
-    Context parent_ctx = {0};
+    Context parent_ctx = context_self();
     Context child_ctx = {0};
 
     Gemini gemini = 

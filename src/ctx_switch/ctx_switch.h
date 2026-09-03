@@ -22,6 +22,7 @@ typedef struct
 
 Stack create_new_stack(void);
 
+Context context_self(void);
 void context_init(Context* ctx, Stack* stack, UserFunc init_f, void* arg);
 
 void __attribute__((__naked__)) context_switch(
