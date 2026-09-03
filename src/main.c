@@ -1,4 +1,7 @@
+#define _GNU_SOURCE
+#include <assert.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -22,25 +25,55 @@ static char error_buf[256] = {0};
         GOTO_END;                                       \
     }while(0);
 
+typedef struct
+{
+    wasm_exec_env_t* main_exec_env;
+}PthreadFuncArg;
+
+
 void host_stdout_print(wasm_exec_env_t env, const char * msg)
 {
     (void) env;
     printf("board print basic: %s\n", msg);
 }
 
-extern void new_host_stdout_print(wasm_exec_env_t env, const char * msg)
+void new_host_stdout_print(wasm_exec_env_t env, const char * msg)
 {
     (void) env;
     printf("board print advanced: %s\n", msg);
 }
 
+
+void sigint_handler(int signal, siginfo_t * info, void * ctx)
+{
+    char welcome_message[128] = {0};
+
+    assert(signal == SIGINT && info);
+
+    const pthread_t self =  pthread_self();
+
+    snprintf(welcome_message, sizeof(welcome_message), "%zu: SIGINT triggered\n", self);
+
+    (void) ctx;
+
+    write(STDOUT_FILENO, welcome_message, sizeof(welcome_message) -1);
+}
+
 void* pthread_func(void* arg)
 {
     uintptr_t res = 1;
-    wasm_exec_env_t main_exec_env = arg;
+    PthreadFuncArg func_arg = *(PthreadFuncArg*) arg;
     wasm_exec_env_t th_exec_env = {0};
     wasm_module_inst_t module_inst = {0};
     wasm_function_inst_t board_main_f = {0};
+
+    sigset_t set = {0};
+
+    sigemptyset(&set);
+    sigaddset(&set, SIGINT);
+
+    pthread_sigmask(SIG_UNBLOCK, &set, NULL);
+
 
     wasm_runtime_init_thread_env();
 
@@ -49,12 +82,12 @@ void* pthread_func(void* arg)
         GOTO_END_AND_CUSTOM_ERROR("thread env not inited");
     }
 
-    if ( !(th_exec_env = wasm_runtime_spawn_exec_env(main_exec_env)) )
+    if ( !(th_exec_env = wasm_runtime_spawn_exec_env(*func_arg.main_exec_env)) )
     {
         GOTO_END_AND_CUSTOM_ERROR("failed creating thread exec env");
     }
 
-    if ( !(module_inst = wasm_runtime_get_module_inst(main_exec_env)) )
+    if ( !(module_inst = wasm_runtime_get_module_inst(*func_arg.main_exec_env)) )
     {
         GOTO_END_AND_CUSTOM_ERROR("failed fetching module instance");
     }
@@ -84,21 +117,11 @@ int main(int argc, char *argv[])
     char* buf = NULL;
     uint32_t file_buffer_size = 0;
     uintptr_t err;
-    bool init_wamr_ok;
+    bool init_wamr_ok = false;
 
     wasm_module_t module = {0};
     wasm_module_inst_t module_inst = {0};
     wasm_exec_env_t main_exec_env = {0};
-
-    pthread_t th_id = {0};
-
-
-    if ( argc < 2)
-    {
-        fprintf(stderr, "missing input file: *.aot\n");
-        return 1;
-    }
-
     NativeSymbol native_symbols[] =
     {
         {
@@ -115,6 +138,33 @@ int main(int argc, char *argv[])
             .attachment = NULL,
         }
     };
+
+    pthread_t th_id = {0};
+    PthreadFuncArg func_arg = 
+    {
+        .main_exec_env = &main_exec_env,
+    };
+
+    struct sigaction sa = {0};
+
+    sigemptyset(&sa.sa_mask);
+    sigprocmask(SIG_BLOCK, &sa.sa_mask, NULL);
+    sa.sa_sigaction = sigint_handler;
+    sa.sa_flags = SA_SIGINFO | SA_RESTART;
+
+
+    //===============================================init=========================================
+
+    if ( argc < 2)
+    {
+        fprintf(stderr, "missing input file: *.aot\n");
+        return 1;
+    }
+
+    if ( sigaction(SIGINT, &sa, NULL) )
+    {
+        GOTO_END_AND_CUSTOM_ERROR(strerror(errno));
+    }
 
     if ( !(init_wamr_ok = wasm_runtime_init()) )
     {
@@ -146,15 +196,18 @@ int main(int argc, char *argv[])
         GOTO_END_AND_CUSTOM_ERROR("failed creating main_exec_env");
     }
 
-    if( (err = pthread_create(&th_id, NULL, pthread_func, main_exec_env)) )
+    if( (err = pthread_create(&th_id, NULL, pthread_func, &func_arg)) )
     {
         GOTO_END_AND_CUSTOM_ERROR(strerror(err));
     }
 
-    sleep(3);
+    //========================================fantastic logic=====================================
 
-    pthread_join(th_id, (void**) &err);
-    if( err ) GOTO_END;
+
+    //========================================stopping thread=====================================
+    printf("cancelling thread\n");
+    pthread_cancel(th_id);
+    pthread_join(th_id, NULL);
 
 
     printf("done\n");
