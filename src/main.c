@@ -98,10 +98,16 @@ int main(int argc, char *argv[])
     printf("done\n");
 
 end:
-    wasm_runtime_terminate(module_inst);
     if( strcmp(error_buf, "") ) fprintf(stderr, "wamr error: %s\n", error_buf);
 
-    if ( module_inst ) wasm_runtime_deinstantiate(module_inst);
+    if ( module_inst ) wasm_runtime_terminate(module_inst);
+
+    if ( main_exec_env ) wasm_runtime_destroy_exec_env(main_exec_env);
+
+    if ( module_inst )
+    {
+        wasm_runtime_deinstantiate(module_inst);
+    }
     if ( module ) wasm_runtime_unload(module);
 
     wasm_runtime_destroy();
