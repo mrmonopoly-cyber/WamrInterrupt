@@ -104,7 +104,6 @@ static bool f_link(void)
 
     cmd_append(&cmd, CC);
 
-    apply_all_defualt_linker_opts(&cmd);
 
     cmd_append(&cmd, "-o", O_FILE);
 
@@ -117,6 +116,8 @@ static bool f_link(void)
             cmd_append(&cmd, file_path);
         }
     }
+
+    apply_all_defualt_linker_opts(&cmd);
 
     res = cmd_run(&cmd);
 
