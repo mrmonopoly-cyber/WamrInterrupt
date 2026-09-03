@@ -1,3 +1,4 @@
+#include <string.h>
 #define DEFS_IMPLEMENTATION
 #include "BuildDependencies/defs.h"
 
@@ -71,8 +72,10 @@ end:
 static bool f_compile(Walk_Entry entry)
 {
     bool res=true;
+    const char* name = temp_file_name(entry.path);
+    const char* suffix = name + strlen(name) - 2;
 
-    if(entry.type == FILE_REGULAR)
+    if(entry.type == FILE_REGULAR && !strcmp(suffix, ".c"))
     {
         Cmd cmd = {0};
         const char* file_name = nob_temp_file_name(entry.path);
