@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 #define STACK_SIZE (16ULL << 10)
 
@@ -19,8 +20,9 @@ typedef struct
     Reg rsp;
 }Context;
 
-//use malloc
-int create_new_stack(Context* ctx, Stack* stack, UserFunc init_f, void* arg);
+Stack create_new_stack(void);
+
+void context_init(Context* ctx, Stack* stack, UserFunc init_f, void* arg);
 
 void __attribute__((__naked__)) context_switch(
     Context* const restrict old_cs __attribute__((__unused__)),

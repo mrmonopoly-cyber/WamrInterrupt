@@ -21,7 +21,7 @@ void __attribute__((__naked__)) __trampoline(void)
     );
 }
 
-static void context_init(
+void context_init(
         Context* const restrict ctx,
         Stack* stack,
         UserFunc init_func,
@@ -49,6 +49,19 @@ static void context_init(
 }
 
 
+Stack create_new_stack(void)
+{
+    void* base_addr;
+
+    base_addr = malloc(STACK_SIZE);
+    assert(base_addr);
+
+    return (Stack){
+        .base_addr = base_addr,
+        .size = STACK_SIZE,
+    };
+}
+
 void __attribute__((__naked__)) context_switch(
     Context* const restrict old_cs __attribute__((__unused__)),
     const Context* const restrict new_cs __attribute__((__unused__)))
@@ -75,28 +88,6 @@ void __attribute__((__naked__)) context_switch(
 
       "ret"
       );
-}
-
-
-int create_new_stack(Context* ctx, Stack* stack, UserFunc init_f, void* user_arg)
-{
-    void* base_addr;
-
-    assert(ctx);
-
-    if( !(base_addr = malloc(STACK_SIZE)) ) goto fail;
-
-    *stack = (Stack){
-        .base_addr = base_addr,
-        .size = STACK_SIZE,
-    };
-
-    context_init(ctx, stack, init_f, user_arg);
-
-    return 0;
-
-fail:
-    return 1;
 }
 
 void destroy_stack(Stack* stack)
@@ -129,7 +120,6 @@ void test_ctx_switch(void)
 {
     Context parent_ctx = {0};
     Context child_ctx = {0};
-    Stack child_stack = {0};
 
     Gemini gemini = 
     {
@@ -137,7 +127,9 @@ void test_ctx_switch(void)
         .child = &child_ctx,
     };
 
-    create_new_stack(&child_ctx, &child_stack, coroutine, &gemini);
+    Stack child_stack = create_new_stack();
+
+    context_init(&child_ctx, &child_stack, coroutine, &gemini);
 
     context_switch(&parent_ctx, &child_ctx);
     context_switch(&parent_ctx, &child_ctx);
