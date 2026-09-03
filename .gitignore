@@ -1,0 +1,7 @@
+*.o
+build/
+main
+compile_command.json
+nob
+nob.old
+compile_commands.json
