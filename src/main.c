@@ -76,6 +76,7 @@ int main(int argc, char *argv[])
     }
 
     buf = bh_read_file_to_buffer(input_file, &file_buffer_size);
+    if ( !buf ) GOTO_END_AND_CUSTOM_ERROR("failed loading input file");
 
     module = wasm_runtime_load((uint8_t *) buf, file_buffer_size, INPUT_ERROR_BUF);
     if ( !module ) GOTO_END;
