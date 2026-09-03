@@ -12,6 +12,8 @@
 #define CC "cc"
 
 #define BUILD_DIR "build"
+#define THIRDPARTY "ThirdParty"
+
 #define O_FILE "main"
 
 #define FAT_ARRAY_TEMPLATE(T)           \
@@ -133,6 +135,7 @@ ArrayViewString default_compiler_opts(void)
     {
         "-Wall",
         "-Wextra",
+        "-ggdb",
         //add here your compiler options: -c, -ggdb, -O2, ...
     };
 
@@ -143,6 +146,10 @@ ArrayViewString default_linker_opts(void)
 {
     static const char* opts[] = 
     {
+        "-L"BUILD_DIR"/wamr",
+        "-lvmlib",
+        "-lm",
+        "-ggdb",
         //add here your compiler options: -lm, -lgdb, ...
     };
 
@@ -153,6 +160,15 @@ ArrayViewString default_include_path_opts(void)
 {
     static const char* opts[] = 
     {
+        THIRDPARTY"/wamr/wasm-micro-runtime/core/iwasm/include",
+        THIRDPARTY"/wamr/wasm-micro-runtime/core/iwasm/libraries/thread-mgr",
+        THIRDPARTY"/wamr/wasm-micro-runtime/core/shared/utils",
+        THIRDPARTY"/wamr/wasm-micro-runtime/core/shared/utils/uncommon",
+        THIRDPARTY"/wamr/wasm-micro-runtime/core/shared/platform/include",
+        THIRDPARTY"/wamr/wasm-micro-runtime/core/shared/platform/linux",
+
+        THIRDPARTY"/wamr/wasm-micro-runtime/core/iwasm/interpreter",
+
         //add here your include path: -I...
         //consider the root of the project the starting source path
     };
@@ -164,6 +180,10 @@ ArrayViewGDef default_global_defs_opts(void)
 {
     static const GDef opts[] = 
     {
+        //wamr features
+        {"WASM_ENABLE_THREAD_MGR"               , "1"},
+        {"WASM_ENABLE_CUSTOM_NAME_SECTION"      , "1"},
+
         //add here your global definitions: -DVAR=VALUE == (GDef) {.def="VAR", .val="VALUE"}
     };
 
