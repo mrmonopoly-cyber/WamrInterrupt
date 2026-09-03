@@ -85,10 +85,7 @@ int main(int argc, char *argv[])
     if ( !module_inst ) GOTO_END;
 
     board_main_f = wasm_runtime_lookup_function(module_inst, "board_main");
-    if ( !board_main_f )
-    {
-        GOTO_END_AND_CUSTOM_ERROR("board main function not found");
-    }
+    if ( !board_main_f ) GOTO_END_AND_CUSTOM_ERROR("board main function not found");
 
     main_exec_env = wasm_runtime_create_exec_env(module_inst, stack_size);
 
