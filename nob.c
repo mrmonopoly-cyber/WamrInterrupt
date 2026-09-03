@@ -1,12 +1,72 @@
-#include <stdio.h>
-
-
 #define DEFS_IMPLEMENTATION
 #include "BuildDependencies/defs.h"
 
 #define NOB_IMPLEMENTATION
 #include "BuildDependencies/nob.h"
 
+static bool f_build_wamr(void)
+{
+    static char wamr_root_dir[128] = {0};
+
+    bool res = false;
+    Cmd cmd = {0};
+
+    const char* pwd = get_current_dir_temp();
+    const char* wamr_path = "./ThirdParty/wamr";
+    snprintf(wamr_root_dir, sizeof(wamr_root_dir),
+            "%s/ThirdParty/wamr/wasm-micro-runtime", pwd);
+
+    nob_log(INFO, "wamr root is at %s", wamr_root_dir);
+
+    const GDef build_gen_defs [] =
+    {
+        {"WAMR_BUILD_PLATFORM"                  , "linux"},
+        {"WAMR_BUILD_TARGET"                    , "X86_64"},
+        {"WAMR_ROOT_DIR"                        , wamr_root_dir},
+        {"WAMR_BUILD_INTERP"                    , "0"},
+        {"WAMR_BUILD_FAST_INTERP"               , "0"},
+        {"WAMR_BUILD_AOT"                       , "1"},
+        {"WAMR_BUILD_LIBC_BUILTIN"              , "1"},
+        {"WAMR_BUILD_LIBC_WASI"                 , "1"},
+        {"WAMR_BUILD_SIMD"                      , "0"},
+        {"WAMR_BUILD_REF_TYPES"                 , "1"},
+        {"WAMR_BUILD_THREAD_MGR"                , "1"},
+        {"WAMR_BUILD_SHARED_MEMORY"             , "1"},
+        {"WAMR_BUILD_LIB_PTHREAD"               , "1"},
+        {"WAMR_BUILD_LIB_WASI_THREADS"          , "1"},
+        {"WAMR_BUILD_LINUX_PERF"                , "0"},
+        {"WAMR_BUILD_DEBUG_INTERP"              , "0"},
+        {"WAMR_BUILD_LOAD_CUSTOM_SECTION"       , "1"},
+        {"WAMR_BUILD_CUSTOM_NAME_SECTION"      , "1"},
+
+        {"CMAKE_EXPORT_COMPILE_COMMANDS"        ,"ON"},
+        {"CMAKE_BUILD_TYPE"                     ,"Release"},
+    };
+
+    const GDef feature_gen_defs [] =
+    {
+        {"WASM_ENABLE_THREAD_MGR"               , "1"},
+        {"WASM_ENABLE_CUSTOM_NAME_SECTION"      , "1"},
+    };
+
+    cmd_append(&cmd, "cmake");
+    cmd_append(&cmd, "-S", wamr_path);
+    cmd_append(&cmd, "-B", BUILD_DIR"/wamr");
+    cmd_append(&cmd, "-G", "Ninja");
+
+    apply_global_definitions(&cmd, (ArrayViewGDef) FAT_ARRAY_INIT(build_gen_defs));
+
+    if ( !( res = cmd_run(&cmd) ) ) goto end;
+
+    cmd_append(&cmd, "cmake");
+    cmd_append(&cmd, "--build", BUILD_DIR"/wamr");
+
+    if ( !( res = cmd_run(&cmd) ) ) goto end;
+
+end:
+    cmd_free(cmd);
+    return res;
+}
 
 static bool f_compile(Walk_Entry entry)
 {
@@ -19,33 +79,7 @@ static bool f_compile(Walk_Entry entry)
 
         cmd_append(&cmd, CC);
 
-        //compiler options
-        FOR_EACH_FAT_ARRAY_STR(default_compiler_opts(), opt)
-        {
-            if(opt) cmd_append(&cmd, opt);
-        }
-
-        //include path
-        FOR_EACH_FAT_ARRAY_STR(default_include_path_opts(), path)
-        {
-            if(path) cmd_append(&cmd, temp_sprintf("-I%s", path));
-        }
-
-        //global definitions
-        FOR_EACH_FAT_ARRAY(default_global_defs_opts(), def)
-        {
-            if(def && def->def)
-            {
-                if(def->val)
-                {
-                    cmd_append(&cmd, temp_sprintf("-D%s=%s", def->def, def->val));
-                }
-                else
-                {
-                    cmd_append(&cmd, temp_sprintf("-D%s", def->def));
-                }
-            }
-        }
+        apply_all_defualt_compile_opts(&cmd);
 
         cmd_append(&cmd, "-c");
         cmd_append(&cmd, "-o", temp_sprintf("%s/%.*s.o", BUILD_DIR, (int) strlen(file_name)-2, file_name));
@@ -70,11 +104,7 @@ static bool f_link(void)
 
     cmd_append(&cmd, CC);
 
-    //linker options
-    FOR_EACH_FAT_ARRAY_STR(default_linker_opts(), opt)
-    {
-        if(opt) cmd_append(&cmd, opt);
-    }
+    apply_all_defualt_linker_opts(&cmd);
 
     cmd_append(&cmd, "-o", O_FILE);
 
@@ -97,12 +127,21 @@ static bool f_link(void)
 
 int main(int argc, char **argv)
 {
-    GO_REBUILD_URSELF(argc, argv);
+    GO_REBUILD_URSELF_PLUS(argc, argv,
+            "./BuildDependencies/defs.h");
 
-    printf("build directory: %s\n", BUILD_DIR);
-    printf("output file: %s\n", O_FILE);
+    nob_log(INFO, "build directory: %s\n", BUILD_DIR);
+    nob_log(INFO, "output file: %s\n", O_FILE);
 
     mkdir_if_not_exists(BUILD_DIR);
+
+    //wamr
+
+    if(!f_build_wamr())
+    {
+        nob_log(ERROR, "failed building wamr");
+        return 1;
+    }
 
     //source directories
     FOR_EACH_FAT_ARRAY_STR(default_src_dir_opts(), dir)
@@ -112,7 +151,7 @@ int main(int argc, char **argv)
             printf("compiling sources in src: %s\n", dir);
             if(!walk_dir(dir, f_compile))
             {
-                fprintf(stderr, "failed compiling sources in %s\n", dir);
+                nob_log(ERROR, "failed compiling sources in %s", dir);
                 return 1;
             }
         }
@@ -120,7 +159,7 @@ int main(int argc, char **argv)
 
     if(!f_link())
     {
-        fprintf(stderr, "failed liking\n");
+        nob_log(ERROR, "failed liking");
         return 1;
     }
 
