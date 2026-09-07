@@ -183,6 +183,7 @@ ArrayViewGDef default_global_defs_opts(void)
         //wamr features
         {"WASM_ENABLE_THREAD_MGR"               , "1"},
         {"WASM_ENABLE_CUSTOM_NAME_SECTION"      , "1"},
+        {"_GNU_SOURCE",                              },
 
         //add here your global definitions: -DVAR=VALUE == (GDef) {.def="VAR", .val="VALUE"}
     };

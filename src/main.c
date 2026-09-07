@@ -1,4 +1,3 @@
-#define _GNU_SOURCE
 #include <assert.h>
 #include <pthread.h>
 #include <signal.h>
@@ -11,6 +10,8 @@
 #include "bh_read_file.h"
 
 static char error_buf[256] = {0};
+static wasm_function_inst_t irq_invalid_func;
+static wasm_function_inst_t irq_func;
 
 #define ArraySize(ARR) (sizeof(ARR)/sizeof(ARR[0]))
 #define INPUT_ERROR_BUF (error_buf), ArraySize((error_buf))
@@ -30,6 +31,12 @@ typedef struct
     wasm_exec_env_t* main_exec_env;
 }PthreadFuncArg;
 
+typedef struct
+{
+    wasm_function_inst_t func;
+    wasm_module_inst_t module_inst;
+}ThHandlerArg;
+
 
 void host_stdout_print(wasm_exec_env_t env, const char * msg)
 {
@@ -43,22 +50,28 @@ void new_host_stdout_print(wasm_exec_env_t env, const char * msg)
     printf("board print advanced: %s\n", msg);
 }
 
-
-void sigint_handler(int signal, siginfo_t * info, void * ctx)
+void sigint_handler(int signal)
 {
-    char welcome_message[128] = {0};
+    (void) signal;
+    printf("sigint handler: wait\n");
+    while(irq_func && irq_func != &irq_invalid_func);
 
-    assert(signal == SIGINT && info);
-
-    const pthread_t self =  pthread_self();
-
-    snprintf(welcome_message, sizeof(welcome_message), "%zu: SIGINT triggered\n", self);
-
-    (void) ctx;
-
-    write(STDOUT_FILENO, welcome_message, sizeof(welcome_message) -1);
+    printf("sigint handler: done\n");
 }
 
+void th_handler(wasm_exec_env_t exec_en, void* arg)
+{
+    ThHandlerArg* th_arg = arg;
+    if ( !wasm_runtime_call_wasm(exec_en, th_arg->func, 0, NULL) )
+    {
+        fprintf(stderr, "th_handler error: %s\n", wasm_runtime_get_exception(th_arg->module_inst));
+        GOTO_END_AND_CUSTOM_ERROR(wasm_runtime_get_exception(th_arg->module_inst));
+    }
+
+end:
+    printf("th_handler: terminating\n");
+    return;
+}
 
 void worker_thread_cleanup(void* arg)
 {
@@ -68,13 +81,69 @@ void worker_thread_cleanup(void* arg)
     wasm_runtime_destroy_thread_env();
 }
 
+void interrupt_handler_thread_cleanup(void* arg)
+{
+    wasm_exec_env_t* th_exec_env = arg;
+    if ( *th_exec_env ) wasm_runtime_destroy_exec_env(*th_exec_env);
+    wasm_runtime_destroy_thread_env();
+}
+
+void* interrupt_handler_thread(void* arg)
+{
+    wasm_module_inst_t module_inst = arg;
+    wasm_exec_env_t exec_env = {};
+    sigset_t set = {0};
+    int err;
+
+    assert(module_inst);
+
+    sigemptyset(&set);
+    sigaddset(&set, SIGINT);
+
+    wasm_runtime_init_thread_env();
+    pthread_cleanup_push(worker_thread_cleanup, &exec_env);
+
+    if ( (err = pthread_sigmask(SIG_BLOCK, &set, NULL)) )
+    {
+        GOTO_END_AND_CUSTOM_ERROR(strerror(err));
+    }
+
+    if ( !(exec_env = wasm_runtime_create_exec_env(module_inst, 16 << 10)) )
+    {
+        GOTO_END_AND_CUSTOM_ERROR("failed creation of exec env");
+    }
+
+    while(1)
+    {
+        pthread_testcancel();
+
+        if(irq_func && irq_func != &irq_invalid_func)
+        {
+            printf("%s: running irq req\n", __func__);
+            if( !wasm_runtime_call_wasm(exec_env, irq_func, 0 , NULL) )
+            {
+                fprintf(stderr, "error executing the irq_func: %s\n",
+                        wasm_runtime_get_exception(module_inst));
+            }
+            irq_func= NULL;
+            printf("%s: done\n", __func__);
+        }
+    }
+
+end:
+    pthread_cleanup_pop(true);
+    return NULL;
+}
+
 void* worker_thread(void* arg)
 {
     uintptr_t res = 1;
     PthreadFuncArg func_arg = *(PthreadFuncArg*) arg;
-    wasm_exec_env_t th_exec_env = {0};
-    wasm_module_inst_t module_inst = {0};
+    wasm_exec_env_t th_exec_env = {};
+    wasm_module_inst_t module_inst = {};
+    wasm_function_inst_t main_func = {};
     sigset_t set = {0};
+    int err;
 
     //====================================init=================================================
 
@@ -83,8 +152,10 @@ void* worker_thread(void* arg)
     sigemptyset(&set);
     sigaddset(&set, SIGINT);
 
-    pthread_sigmask(SIG_UNBLOCK, &set, NULL);
-
+    if ( (err = pthread_sigmask(SIG_UNBLOCK, &set, NULL)) )
+    {
+        GOTO_END_AND_CUSTOM_ERROR(strerror(err));
+    }
 
     wasm_runtime_init_thread_env();
 
@@ -102,12 +173,17 @@ void* worker_thread(void* arg)
     {
         GOTO_END_AND_CUSTOM_ERROR("failed fetching module instance");
     }
+    
+    if ( !(main_func = wasm_runtime_lookup_function(module_inst, "board_main")) )
+    {
+        GOTO_END_AND_CUSTOM_ERROR("failed loading board main");
+    }
 
     //====================================main logic============================================
 
-    if( pause() < 0 )
+    if ( wasm_runtime_call_wasm(th_exec_env, main_func, 0, NULL) )
     {
-        GOTO_END_AND_CUSTOM_ERROR("pause error");
+        GOTO_END_AND_CUSTOM_ERROR(wasm_runtime_get_exception(module_inst));
     }
 
     //====================================end===================================================
@@ -121,15 +197,25 @@ int main(int argc, char *argv[])
 {
     const char* input_file = argv[1];
     const uint32_t stack_size = 65536, heap_size = 1 << 20;
+    const char* irq_functions[] =
+    {
+        "led_value_i1",
+        "led_value_i2",
+    };
 
     char* buf = NULL;
+    void* th_res = NULL;
     uint32_t file_buffer_size = 0;
     uintptr_t err;
     bool init_wamr_ok = false;
 
-    wasm_module_t module = {0};
-    wasm_module_inst_t module_inst = {0};
-    wasm_exec_env_t main_exec_env = {0};
+    wasm_module_t module = {};
+    wasm_module_inst_t module_inst = {};
+    wasm_exec_env_t main_exec_env = {};
+    wasm_function_inst_t irq_wamr_func_preloaded[ArraySize(irq_functions)] = {};
+
+    pthread_t th_id_workder, th_id_irq_exec = {0};
+
     NativeSymbol native_symbols[] =
     {
         {
@@ -147,19 +233,16 @@ int main(int argc, char *argv[])
         }
     };
 
-    pthread_t th_id = {0};
     PthreadFuncArg func_arg = 
     {
         .main_exec_env = &main_exec_env,
     };
 
-    struct sigaction sa = {0};
+    struct sigaction sa = {};
 
     sigemptyset(&sa.sa_mask);
     sigprocmask(SIG_BLOCK, &sa.sa_mask, NULL);
-    sa.sa_sigaction = sigint_handler;
-    sa.sa_flags = SA_SIGINFO | SA_RESTART;
-
+    sa.sa_handler = sigint_handler;
 
     //===============================================init=========================================
 
@@ -204,28 +287,76 @@ int main(int argc, char *argv[])
         GOTO_END_AND_CUSTOM_ERROR("failed creating main_exec_env");
     }
 
-    if( (err = pthread_create(&th_id, NULL, worker_thread, &func_arg)) )
+    for(size_t i=0; i<ArraySize(irq_functions); i++)
+    {
+        wasm_function_inst_t func = wasm_runtime_lookup_function(module_inst, irq_functions[i]);
+
+        if ( !func ) GOTO_END_AND_CUSTOM_ERROR("loading function for th_handler");
+
+        irq_wamr_func_preloaded[i] = func;
+    }
+
+    if( (err = pthread_create(&th_id_workder, NULL, worker_thread, &func_arg)) )
+    {
+        GOTO_END_AND_CUSTOM_ERROR(strerror(err));
+    }
+
+    if( (err = pthread_create(&th_id_irq_exec, NULL, interrupt_handler_thread, module_inst)) )
     {
         GOTO_END_AND_CUSTOM_ERROR(strerror(err));
     }
 
     //========================================fantastic logic=====================================
 
-    // test_ctx_switch();
+    printf("normal execution\n");
+    sleep(2);
 
+    printf("interrupt th 1\n");
 
-    //========================================stopping thread=====================================
-    printf("cancelling thread\n");
-
-    if ( (err =  pthread_cancel(th_id)) )
+    irq_func = irq_wamr_func_preloaded[0];
+    assert(irq_func);
+    if ( (err = pthread_kill(th_id_workder, SIGINT)) )
     {
         GOTO_END_AND_CUSTOM_ERROR(strerror(err));
     }
 
+    printf("normal execution\n");
+    sleep(3);
 
-    void* th_res = NULL;
-    pthread_join(th_id, &th_res);
+    printf("interrupt th 2\n");
 
+    irq_func = irq_wamr_func_preloaded[1];
+    assert(irq_func);
+    if ( (err = pthread_kill(th_id_workder, SIGINT)) )
+    {
+        GOTO_END_AND_CUSTOM_ERROR(strerror(err));
+    }
+
+    printf("normal execution\n");
+    sleep(3);
+
+    //========================================stopping thread=====================================
+    printf("cancelling thread\n");
+
+    irq_func = &irq_invalid_func;
+
+    if ( (err =  pthread_cancel(th_id_workder)) )
+    {
+        GOTO_END_AND_CUSTOM_ERROR(strerror(err));
+    }
+
+    if ( (err =  pthread_cancel(th_id_irq_exec)) )
+    {
+        GOTO_END_AND_CUSTOM_ERROR(strerror(err));
+    }
+
+    pthread_join(th_id_irq_exec, &th_res);
+    if( th_res != PTHREAD_CANCELED )
+    {
+        GOTO_END_AND_CUSTOM_ERROR("invalid pthread_join res");
+    }
+
+    pthread_join(th_id_workder, &th_res);
     if( th_res != PTHREAD_CANCELED )
     {
         GOTO_END_AND_CUSTOM_ERROR("invalid pthread_join res");
