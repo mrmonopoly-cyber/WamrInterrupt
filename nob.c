@@ -129,6 +129,20 @@ static bool f_link(void)
     return res;
 }
 
+static bool f_run(void)
+{
+    bool res = false;
+    Cmd cmd = {0};
+
+    cmd_append(&cmd, "./"O_FILE);
+    cmd_append(&cmd, "./fake_board.aot");
+
+    res = cmd_run(&cmd);
+
+    cmd_free(cmd);
+    return res;
+}
+
 int main(int argc, char **argv)
 {
     GO_REBUILD_URSELF_PLUS(argc, argv,
@@ -164,6 +178,12 @@ int main(int argc, char **argv)
     if(!f_link())
     {
         nob_log(ERROR, "failed liking");
+        return 1;
+    }
+
+    if( !f_run() )
+    {
+        nob_log(ERROR, "failed running");
         return 1;
     }
 
