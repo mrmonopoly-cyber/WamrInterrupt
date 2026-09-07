@@ -59,15 +59,26 @@ void sigint_handler(int signal, siginfo_t * info, void * ctx)
     write(STDOUT_FILENO, welcome_message, sizeof(welcome_message) -1);
 }
 
-void* pthread_func(void* arg)
+
+void worker_thread_cleanup(void* arg)
+{
+    wasm_exec_env_t* th_exec_env = arg;
+
+    if ( *th_exec_env ) wasm_runtime_destroy_exec_env(*th_exec_env);
+    wasm_runtime_destroy_thread_env();
+}
+
+void* worker_thread(void* arg)
 {
     uintptr_t res = 1;
     PthreadFuncArg func_arg = *(PthreadFuncArg*) arg;
     wasm_exec_env_t th_exec_env = {0};
     wasm_module_inst_t module_inst = {0};
-    wasm_function_inst_t board_main_f = {0};
-
     sigset_t set = {0};
+
+    //====================================init=================================================
+
+    pthread_cleanup_push(worker_thread_cleanup, &th_exec_env);
 
     sigemptyset(&set);
     sigaddset(&set, SIGINT);
@@ -92,20 +103,17 @@ void* pthread_func(void* arg)
         GOTO_END_AND_CUSTOM_ERROR("failed fetching module instance");
     }
 
-    if ( !(board_main_f = wasm_runtime_lookup_function(module_inst, "board_main")) )
+    //====================================main logic============================================
+
+    if( pause() < 0 )
     {
-        GOTO_END_AND_CUSTOM_ERROR("board main function not found");
+        GOTO_END_AND_CUSTOM_ERROR("pause error");
     }
 
-    if ( !wasm_runtime_call_wasm(th_exec_env, board_main_f, 0, NULL) )
-    {
-        GOTO_END_AND_CUSTOM_ERROR(wasm_runtime_get_exception(module_inst));
-    }
-
-
+    //====================================end===================================================
     res =0;
 end:
-    if ( th_exec_env ) wasm_runtime_destroy_thread_env();
+    pthread_cleanup_pop(1);
     return (void*) res;
 }
 
@@ -196,18 +204,32 @@ int main(int argc, char *argv[])
         GOTO_END_AND_CUSTOM_ERROR("failed creating main_exec_env");
     }
 
-    if( (err = pthread_create(&th_id, NULL, pthread_func, &func_arg)) )
+    if( (err = pthread_create(&th_id, NULL, worker_thread, &func_arg)) )
     {
         GOTO_END_AND_CUSTOM_ERROR(strerror(err));
     }
 
     //========================================fantastic logic=====================================
 
+    // test_ctx_switch();
+
 
     //========================================stopping thread=====================================
     printf("cancelling thread\n");
-    pthread_cancel(th_id);
-    pthread_join(th_id, NULL);
+
+    if ( (err =  pthread_cancel(th_id)) )
+    {
+        GOTO_END_AND_CUSTOM_ERROR(strerror(err));
+    }
+
+
+    void* th_res = NULL;
+    pthread_join(th_id, &th_res);
+
+    if( th_res != PTHREAD_CANCELED )
+    {
+        GOTO_END_AND_CUSTOM_ERROR("invalid pthread_join res");
+    }
 
 
     printf("done\n");
