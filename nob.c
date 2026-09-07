@@ -129,6 +129,25 @@ static bool f_link(void)
     return res;
 }
 
+static void f_test()
+{
+    Cmd cmd = {0};
+    // cat src/virtual_interrupt/spscq/spscq.h | gcc -DSPSCQ_TEST -x c - -o test_sda
+
+    cmd_append(&cmd, "gcc");
+    cmd_append(&cmd, "-x", "c");
+    cmd_append(&cmd, "./src/virtual_interrupt/spscq/spscq.h");
+    cmd_append(&cmd, "-DSPSCQ_TEST");
+    cmd_append(&cmd, "-o", "spscq_tester");
+
+    cmd_run(&cmd);
+
+    cmd_append(&cmd, "./spscq_tester");
+    cmd_run(&cmd);
+
+    cmd_free(cmd);
+}
+
 static bool f_run(void)
 {
     bool res = false;
@@ -153,8 +172,15 @@ int main(int argc, char **argv)
 
     mkdir_if_not_exists(BUILD_DIR);
 
-    //wamr
+    bool test = true;
 
+    if(test)
+    {
+        f_test();
+        return 0;
+    }
+
+    //wamr
     if(!f_build_wamr())
     {
         nob_log(ERROR, "failed building wamr");
@@ -186,6 +212,7 @@ int main(int argc, char **argv)
         nob_log(ERROR, "failed running");
         return 1;
     }
+
 
   return 0;
 }

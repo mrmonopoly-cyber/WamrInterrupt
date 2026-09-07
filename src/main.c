@@ -107,7 +107,7 @@ void* interrupt_handler_thread(void* arg)
     assert(module_inst);
 
     sigemptyset(&set);
-    sigaddset(&set, SIGINT);
+    sigaddset(&set, SIGPOLL);
 
     wasm_runtime_init_thread_env();
     pthread_cleanup_push(worker_thread_cleanup, &exec_env);
@@ -166,7 +166,7 @@ void* worker_thread(void* arg)
     pthread_cleanup_push(worker_thread_cleanup, &th_exec_env);
 
     sigemptyset(&set);
-    sigaddset(&set, SIGINT);
+    sigaddset(&set, SIGPOLL);
 
     if ( (err = pthread_sigmask(SIG_UNBLOCK, &set, NULL)) )
     {
@@ -214,7 +214,7 @@ static void trigger_interrupt(pthread_t th_id_worker, wasm_function_inst_t irq_f
     int err;
 
     pthread_mutex_lock(&irq_exec_mut);
-    if ( (err = pthread_kill(th_id_worker, SIGINT)) )
+    if ( (err = pthread_kill(th_id_worker, SIGPOLL)) )
     {
         GOTO_END_AND_CUSTOM_ERROR(strerror(err));
     }
@@ -287,7 +287,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    if ( sigaction(SIGINT, &sa, NULL) )
+    if ( sigaction(SIGPOLL, &sa, NULL) )
     {
         GOTO_END_AND_CUSTOM_ERROR(strerror(errno));
     }
