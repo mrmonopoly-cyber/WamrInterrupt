@@ -13,6 +13,12 @@ static char error_buf[256] = {0};
 static wasm_function_inst_t irq_invalid_func;
 static wasm_function_inst_t irq_func;
 
+static pthread_mutex_t sigint_mut = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t sigint_cond = PTHREAD_COND_INITIALIZER;
+
+static pthread_mutex_t irq_exec_mut = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t irq_exec_cond = PTHREAD_COND_INITIALIZER;
+
 #define ArraySize(ARR) (sizeof(ARR)/sizeof(ARR[0]))
 #define INPUT_ERROR_BUF (error_buf), ArraySize((error_buf))
 #define GOTO_END goto end
@@ -54,7 +60,10 @@ void sigint_handler(int signal)
 {
     (void) signal;
     printf("sigint handler: wait\n");
-    while(irq_func && irq_func != &irq_invalid_func);
+
+    pthread_mutex_lock(&sigint_mut);
+    pthread_cond_wait(&sigint_cond, &sigint_mut);
+    pthread_mutex_unlock(&sigint_mut);
 
     printf("sigint handler: done\n");
 }
@@ -115,19 +124,26 @@ void* interrupt_handler_thread(void* arg)
 
     while(1)
     {
+        pthread_mutex_lock(&irq_exec_mut);
+        pthread_cond_wait(&irq_exec_cond, &irq_exec_mut);
+
         pthread_testcancel();
 
-        if(irq_func && irq_func != &irq_invalid_func)
+        printf("%s: running irq req\n", __func__);
+        if( irq_func && !wasm_runtime_call_wasm(exec_env, irq_func, 0 , NULL) )
         {
-            printf("%s: running irq req\n", __func__);
-            if( !wasm_runtime_call_wasm(exec_env, irq_func, 0 , NULL) )
-            {
-                fprintf(stderr, "error executing the irq_func: %s\n",
-                        wasm_runtime_get_exception(module_inst));
-            }
-            irq_func= NULL;
-            printf("%s: done\n", __func__);
+            fprintf(stderr, "error executing the irq_func: %s\n",
+                    wasm_runtime_get_exception(module_inst));
         }
+
+        pthread_mutex_lock(&sigint_mut);
+        pthread_cond_signal(&sigint_cond);
+        pthread_mutex_unlock(&sigint_mut);
+
+        irq_func= NULL;
+        printf("%s: done\n", __func__);
+
+        pthread_mutex_unlock(&irq_exec_mut);
     }
 
 end:
@@ -191,6 +207,25 @@ void* worker_thread(void* arg)
 end:
     pthread_cleanup_pop(1);
     return (void*) res;
+}
+
+static void trigger_interrupt(pthread_t th_id_worker, wasm_function_inst_t irq_func_to_exec)
+{
+    int err;
+
+    pthread_mutex_lock(&irq_exec_mut);
+    if ( (err = pthread_kill(th_id_worker, SIGINT)) )
+    {
+        GOTO_END_AND_CUSTOM_ERROR(strerror(err));
+    }
+    irq_func = irq_func_to_exec;
+    assert(irq_func);
+
+    pthread_cond_signal(&irq_exec_cond);
+    pthread_mutex_unlock(&irq_exec_mut);
+
+end:
+    return;
 }
 
 int main(int argc, char *argv[])
@@ -312,25 +347,13 @@ int main(int argc, char *argv[])
     sleep(2);
 
     printf("interrupt th 1\n");
-
-    irq_func = irq_wamr_func_preloaded[0];
-    assert(irq_func);
-    if ( (err = pthread_kill(th_id_workder, SIGINT)) )
-    {
-        GOTO_END_AND_CUSTOM_ERROR(strerror(err));
-    }
+    trigger_interrupt(th_id_workder, irq_wamr_func_preloaded[0]);
 
     printf("normal execution\n");
     sleep(3);
 
     printf("interrupt th 2\n");
-
-    irq_func = irq_wamr_func_preloaded[1];
-    assert(irq_func);
-    if ( (err = pthread_kill(th_id_workder, SIGINT)) )
-    {
-        GOTO_END_AND_CUSTOM_ERROR(strerror(err));
-    }
+    trigger_interrupt(th_id_workder, irq_wamr_func_preloaded[1]);
 
     printf("normal execution\n");
     sleep(3);
