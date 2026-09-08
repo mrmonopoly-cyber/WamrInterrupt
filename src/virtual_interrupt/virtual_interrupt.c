@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include "spscq/spscq.h"
 #include "wasm_export.h"
@@ -18,13 +19,32 @@ typedef struct
     int out;
 }ThWorkersArg;
 
+typedef struct
+{
+    wasm_module_inst_t module_inst;
+    struct VIMainFunStatus* status;
+    wasm_function_inst_t main_f;
+    int out;
+}ThMainThreadArg;
+
+static void* _th_main_thread(void* arg);
 static void* _th_irq_worker(void* arg);
 static void* _th_dispatcher(void* arg);
 
 static void _th_irq_worker_cleanup(void* arg);
 static void _th_irq_worker_signal_handler(int signal, siginfo_t* info, void* ctx);
 
-static inline struct VIWorkerStatus* get_active_worker(const VIDispatcher* const restrict d);
+static inline void _preempt_thread(VIPreemptionStatus* const restrict main_f);
+static inline void _resume_thread_preemption(VIPreemptionStatus* const restrict status);
+
+static inline VIDispatcherSignalRef _new_dispatcher_signal_ref(VIDispatcher* const restrict d);
+static inline void _dispatcher_signal(VIDispatcherSignalRef* status);
+
+static inline int _init_preemption_status(VIPreemptionStatus* status);
+static inline void _preemption_status_signal(VIPreemptionStatus* status);
+static inline void _preemption_status_wait(VIPreemptionStatus* status);
+
+static inline struct VIWorkerStatus* _get_active_worker(const VIDispatcher* const restrict d);
 
 #define VI_ERROR_WAMR_NO_EXCEPTION  ""
 
@@ -34,21 +54,24 @@ const char* VI_ERROR_WAMR_EXCEPTION = VI_ERROR_WAMR_NO_EXCEPTION;
 VIError vidispatcher_init(
         VIDispatcher* const restrict dispatcher,
         wasm_module_inst_t module_inst,
+        wasm_function_inst_t main_f,
         const size_t n_lines,
         const size_t depth)
 {
     VIError res = VIError_None;
+    struct VIMainFunStatus*  main_f_status;
     struct VIWorkerStatus* workers = NULL;
     IrqFuncHandler* funcs = NULL;
     size_t workers_ok=0;
     int err;
 
-    if( !dispatcher || !module_inst ||  !depth )
+    if( !dispatcher || !module_inst || !depth || !main_f )
     {
         res = VIError_InvalidInput;
         goto end;
     }
 
+//===================================--init memory==========================================
     workers = malloc(depth * sizeof(*workers));
     funcs = malloc(n_lines * sizeof(*funcs));
 
@@ -59,6 +82,10 @@ VIError vidispatcher_init(
         goto end;
     }
 
+//======================================init queues==========================================
+    spscq_init(&dispatcher->channel_ureq);
+
+//======================================init signals=========================================
     struct sigaction sa ={0};
     sa.sa_sigaction = _th_irq_worker_signal_handler;
     sa.sa_flags = SA_SIGINFO | SA_RESTART;
@@ -79,6 +106,7 @@ VIError vidispatcher_init(
         goto end;
     }
 
+    //================================init dispatcher conds/mutex=============================
     if ( (err = pthread_cond_init(&dispatcher->dispatcher_cond, NULL)) )
     {
         res =VIError_Libc;
@@ -95,6 +123,51 @@ VIError vidispatcher_init(
         goto end;
     }
 
+//====================================init main function thread===============================
+
+    main_f_status = &dispatcher->main_f_status;
+
+    if ( (err = _init_preemption_status(&main_f_status->preemption_status) ) )
+    {
+        res =VIError_Libc;
+        errno = err;
+        VI_ERROR_ERRNO = errno;
+        goto end;
+    }
+
+    main_f_status->dispatcher_signal_ref = _new_dispatcher_signal_ref(dispatcher);
+
+    {
+        ThMainThreadArg arg = {
+            .module_inst = module_inst,
+            .status = main_f_status,
+            .out = -1,
+            .main_f = main_f,
+        };
+
+        if( ( err = pthread_create(
+                        &main_f_status->preemption_status.tid,
+                        NULL,
+                        _th_main_thread,
+                        &arg) ) )
+        {
+            errno = err;
+            VI_ERROR_ERRNO = errno;
+            res = VIError_Libc;
+            goto end;
+        }
+
+        //spinlock
+        while(arg.out == -1);
+
+        if (arg.out != VIError_None)
+        {
+            res = VIError_WAMR;
+            goto end;
+        }
+    }
+
+//======================================init workers==========================================
     for(size_t i=0; i<depth; i++)
     {
         int err;
@@ -120,15 +193,7 @@ VIError vidispatcher_init(
             goto end;
         }
 
-        if ( (err = pthread_cond_init(&status->preemption_cond, NULL)) )
-        {
-            res =VIError_Libc;
-            errno = err;
-            VI_ERROR_ERRNO = errno;
-            goto end;
-        }
-
-        if ( (err = pthread_mutex_init(&status->preemption_mutex, NULL)) )
+        if ( (err = _init_preemption_status(&status->preemption_status)) )
         {
             res =VIError_Libc;
             errno = err;
@@ -137,12 +202,11 @@ VIError vidispatcher_init(
         }
 
         status->func_index = 0;
-        status->p_dispatcher_cond = &dispatcher->dispatcher_cond;
-        status->p_dispatcher_mutex = &dispatcher->dispatcher_mutex;
+        status->dispatcher_signal_ref = _new_dispatcher_signal_ref(dispatcher);
         status->p_funcs = funcs;
         atomic_init(&status->working, false);
 
-        if( ( err = pthread_create(&status->tid, NULL, _th_irq_worker, &arg) ) )
+        if( ( err = pthread_create(&status->preemption_status.tid, NULL, _th_irq_worker, &arg) ) )
         {
             errno = err;
             VI_ERROR_ERRNO = errno;
@@ -162,30 +226,30 @@ VIError vidispatcher_init(
         workers_ok++;
     }
 
+//=========================================assigning field to dispatcher=======================
     dispatcher->n_workers = depth;
     dispatcher->workers = workers;
 
     dispatcher->n_funcs = n_lines;
     dispatcher->funcs = funcs;
 
-    spscq_init(&dispatcher->channel_ureq);
-
     return res;
 
+//=========================================error handling======================================
 end:
     assert(res != VIError_None);
     for(size_t i=0; i<workers_ok; i++)
     {
         struct VIWorkerStatus *worker = &dispatcher->workers[i];
 
-        pthread_cancel(worker->tid);
-        pthread_join(worker->tid, NULL);
+        pthread_cancel(worker->preemption_status.tid);
+        pthread_join(worker->preemption_status.tid, NULL);
 
         pthread_mutex_destroy(&worker->data_mutex);
         pthread_cond_destroy(&worker->data_cond);
 
-        pthread_mutex_destroy(&worker->preemption_mutex);
-        pthread_cond_destroy(&worker->preemption_cond);
+        pthread_mutex_destroy(&worker->preemption_status.mutex);
+        pthread_cond_destroy(&worker->preemption_status.cond);
     }
 
     pthread_mutex_destroy(&dispatcher->dispatcher_mutex);
@@ -267,14 +331,14 @@ void vidispatcher_destroy(VIDispatcher* const restrict dispatcher)
         {
             struct VIWorkerStatus *worker = &dispatcher->workers[i];
 
-            pthread_cancel(worker->tid);
-            pthread_join(worker->tid, NULL);
+            pthread_cancel(worker->preemption_status.tid);
+            pthread_join(worker->preemption_status.tid, NULL);
 
             pthread_mutex_destroy(&worker->data_mutex);
             pthread_cond_destroy(&worker->data_cond);
 
-            pthread_mutex_destroy(&worker->preemption_mutex);
-            pthread_cond_destroy(&worker->preemption_cond);
+            pthread_mutex_destroy(&worker->preemption_status.mutex);
+            pthread_cond_destroy(&worker->preemption_status.cond);
         }
 
         pthread_mutex_destroy(&dispatcher->dispatcher_mutex);
@@ -293,6 +357,61 @@ static void _th_irq_worker_cleanup(void* arg)
     wasm_runtime_destroy_thread_env();
 }
 
+static void* _th_main_thread(void* arg)
+{
+    uintptr_t res = VIError_None;
+    ThMainThreadArg* th_arg = arg;
+
+    wasm_module_inst_t module_inst = th_arg->module_inst;
+    wasm_exec_env_t th_exec_env = {};
+    sigset_t set = {};
+    int err;
+
+    //====================================init=================================================
+    pthread_cleanup_push(_th_irq_worker_cleanup, &th_exec_env);
+    wasm_runtime_init_thread_env();
+
+    if( !module_inst )
+    {
+        res = VIError_InvalidInput;
+        goto end;
+    }
+
+    th_exec_env = wasm_runtime_create_exec_env(module_inst, 16 << 10); //16 KB
+    if ( !th_exec_env )
+    {
+        res = VIError_WAMR;
+        goto end;
+    }
+
+    sigemptyset(&set);
+    sigaddset(&set, SIG_PREEMPTION_WORKERS);
+    if ( ( err =pthread_sigmask(SIG_UNBLOCK, &set, NULL) ) < 0 )
+    {
+        res = VIError_Libc;
+        errno = err;
+        VI_ERROR_ERRNO = errno;
+        goto end;
+    }
+    th_arg->out = VIError_None;
+
+    //====================================logic=================================================
+    th_arg->status->working = true;
+    if ( wasm_runtime_call_wasm(th_exec_env, th_arg->main_f, 0, NULL) )
+    {
+        VI_ERROR_WAMR_EXCEPTION = wasm_runtime_get_exception(module_inst);
+    }
+
+    //INFO: if we reach here it means that the main has ended for any reason which is probably
+    //an error unless the hole program ended
+    _dispatcher_signal(&th_arg->status->dispatcher_signal_ref);
+
+    //====================================end==================================================
+end:
+    pthread_cleanup_pop(true);
+    return (void*) res;
+}
+
 static void* _th_irq_worker(void* arg)
 {
     uintptr_t res = VIError_None;
@@ -304,6 +423,7 @@ static void* _th_irq_worker(void* arg)
     sigset_t set = {};
     int err;
 
+//========================================init=================================================
     pthread_cleanup_push(_th_irq_worker_cleanup, &th_exec_env);
     wasm_runtime_init_thread_env();
 
@@ -331,9 +451,13 @@ static void* _th_irq_worker(void* arg)
     }
 
     th_arg->out = VIError_None;
+
+//=======================================logic=================================================
     while(1)
     {
-        pthread_testcancel();
+        VIDispatcherSignalRef* disp_sig_ref = &status->dispatcher_signal_ref;
+        
+        assert(disp_sig_ref);
 
         pthread_mutex_lock(&status->data_mutex);
         {
@@ -341,25 +465,27 @@ static void* _th_irq_worker(void* arg)
             {
                 pthread_cond_wait(&status->data_cond, &status->data_mutex);
             }
-
-            assert(status->p_funcs);
-
-            if ( !wasm_runtime_call_wasm(th_exec_env, status->p_funcs[status->func_index], 0, NULL) )
-            {
-                VI_ERROR_WAMR_EXCEPTION = wasm_runtime_get_exception(module_inst);
-            }
-            atomic_store(&status->working, false);
         }
         pthread_mutex_unlock(&status->data_mutex);
 
-        assert(status->p_dispatcher_mutex && status->p_dispatcher_cond);
-        pthread_mutex_lock(status->p_dispatcher_mutex);
+        assert(status->p_funcs);
+
+        printf("VIWorker: calling func: %zu\n", status->func_index);
+        if ( !wasm_runtime_call_wasm(th_exec_env, status->p_funcs[status->func_index], 0, NULL) )
         {
-            pthread_cond_signal(status->p_dispatcher_cond);
+            VI_ERROR_WAMR_EXCEPTION = wasm_runtime_get_exception(module_inst);
         }
-        pthread_mutex_unlock(status->p_dispatcher_mutex);
+        printf("VIWorker: finshed func: %zu\n", status->func_index);
+
+        atomic_store(&status->working, false);
+
+        _dispatcher_signal(disp_sig_ref);
     }
 
+    //INFO: if we reach here it means that there is almost certain a problem
+    //or the hole program ended
+
+//=========================================end==================================================
 end:
     th_arg->out = res;
     pthread_cleanup_pop(true);
@@ -374,12 +500,15 @@ static void* _th_dispatcher(void* arg)
     struct VIWorkerStatus* old_worker, *new_worker;
     SPSCQ_UReq* c_ureq = &dispatcher->channel_ureq;
 
+//========================================init==================================================
     assert(dispatcher);
 
+//========================================logic=================================================
     while( true )
     {
         bool worker_finish  = false;
 
+        //waiting for something to do
         if( spscq_is_empty(c_ureq) && !strcmp(VI_ERROR_WAMR_EXCEPTION,VI_ERROR_WAMR_NO_EXCEPTION) )
         {
             printf("VIDispatcher: waiting for something to do: "
@@ -397,9 +526,11 @@ static void* _th_dispatcher(void* arg)
         }
 
 
+        //old interrupt ended, unwinding execution to find suspended interrupt if it exists to
+        //resume it
         while( dispatcher->executing_worker )
         {
-            old_worker = get_active_worker(dispatcher);
+            old_worker = _get_active_worker(dispatcher);
             if( old_worker && !atomic_load(&old_worker->working) )
             {
                 dispatcher->executing_worker--;
@@ -407,11 +538,7 @@ static void* _th_dispatcher(void* arg)
             }
             else if( worker_finish ) //resume stopped worker
             {
-                pthread_mutex_lock(&old_worker->preemption_mutex);
-                {
-                    pthread_cond_signal(&old_worker->preemption_cond);
-                }
-                pthread_mutex_unlock(&old_worker->preemption_mutex);
+                _preemption_status_signal(&old_worker->preemption_status);
                 break;
             }
             else
@@ -420,55 +547,134 @@ static void* _th_dispatcher(void* arg)
             }
         }
 
+        //checking if user pushed an interrupt request
+        //IF so AND the priority of the new req is > priority of the current executing_worker OR
+        //there is no executing_worker THAN set suspended the current executing_worker and
+        //set up a new executing_worker to handle the user request
+        //IF the main was running it is be suspended
         spscq_pop(&dispatcher->channel_ureq, &ureq);
-        old_worker = get_active_worker(dispatcher);
+        old_worker = _get_active_worker(dispatcher);
         if( ureq != -1 && ( !old_worker || (size_t) ureq >= old_worker->func_index ) )
         {
             printf("VIDispatcher: user give new irq req: %d\n", ureq);
             dispatcher->executing_worker++;
             assert(dispatcher->executing_worker < dispatcher->n_workers && "TODO: dynamic workers buffer");
-            new_worker = get_active_worker(dispatcher);
+            new_worker = _get_active_worker(dispatcher);
             assert(new_worker);
             new_worker->func_index = ureq;
 
-            //stop current worker (i)
-            if(old_worker)
+            //stop main board, if it's running
+            if( dispatcher->main_f_status.working )
             {
-                pthread_mutex_lock(&old_worker->preemption_mutex);
-                {
-                    pthread_cond_signal(&old_worker->preemption_cond);
-                }
-                pthread_mutex_unlock(&old_worker->preemption_mutex);
+                printf("VIDispatcher: suspending main thread\n");
+                _preempt_thread(&dispatcher->main_f_status.preemption_status);
+                dispatcher->main_f_status.working = false; 
+            }
+
+            assert(!(dispatcher->executing_worker && dispatcher->main_f_status.working));
+
+            //stop current worker (i)
+            if( old_worker )
+            {
+                printf("VIDispatcher: suspending old worker: %zu\n",
+                        dispatcher->executing_worker - 1);
+                _preempt_thread(&old_worker->preemption_status);
             }
 
             //start new thread (i+1)
+            printf("VIDispatcher: starting new worker: %zu\n", dispatcher->executing_worker);
+            atomic_store(&new_worker->working, true);
             pthread_mutex_lock(&new_worker->data_mutex);
             {
-                atomic_store(&new_worker->working, true);
                 pthread_cond_signal(&new_worker->data_cond);
             }
             pthread_mutex_unlock(&new_worker->data_mutex);
         }
-        else if( ureq != -1 ) 
+        // user req has lower priority than what is currently executing
+        else if( ureq != -1 )
         {
             assert(0 && "waiting queue");
             //TODO: waiting queue?
         }
         ureq = -1;
 
+        assert(!(dispatcher->executing_worker && dispatcher->main_f_status.working));
+
+        //IF no interrupt worker is running AND the main thread is not running
+        //THAN resume the main thread
+        if ( !dispatcher->executing_worker && !dispatcher->main_f_status.working )
+        {
+            _resume_thread_preemption(&dispatcher->main_f_status.preemption_status);
+            dispatcher->main_f_status.working = true;
+        }
+
+        //IF and exception is caught signal it to the user and reset it
         if ( strcmp(VI_ERROR_WAMR_EXCEPTION,VI_ERROR_WAMR_NO_EXCEPTION) )
         {
-            fprintf(stderr, "thread error wamr call func: %s\n", VI_ERROR_WAMR_EXCEPTION); //TODO: logger
+            //TODO: logger
+            fprintf(stderr, "thread error wamr call func: %s\n", VI_ERROR_WAMR_EXCEPTION);
             VI_ERROR_WAMR_EXCEPTION = VI_ERROR_WAMR_NO_EXCEPTION;
         }
     }
 
+//====================================end==================================================
     return (void*) res;
 }
 
-static inline struct VIWorkerStatus* get_active_worker(const VIDispatcher* const restrict d)
+static inline int _init_preemption_status(VIPreemptionStatus* status)
+{
+    int res = 99;
+    assert(status);
+
+    if ( (res = pthread_mutex_init(&status->mutex, NULL)) ) return res;
+    if ( (res = pthread_cond_init(&status->cond, NULL)) ) return res;
+
+    return res;
+}
+
+static inline VIDispatcherSignalRef _new_dispatcher_signal_ref(VIDispatcher* const restrict d)
+{
+    assert(d);
+    return (VIDispatcherSignalRef)
+    {
+        .p_dispatcher_cond = &d->dispatcher_cond,
+        .p_dispatcher_mutex = &d->dispatcher_mutex,
+    };
+}
+
+static inline void _dispatcher_signal(VIDispatcherSignalRef* status)
+{
+    assert(status && status->p_dispatcher_mutex && status->p_dispatcher_cond);
+
+    pthread_mutex_lock(status->p_dispatcher_mutex);
+    {
+        pthread_cond_signal(status->p_dispatcher_cond);
+    }
+    pthread_mutex_unlock(status->p_dispatcher_mutex);
+}
+
+static inline void _preemption_status_signal(VIPreemptionStatus* status)
+{
+    pthread_mutex_lock(&status->mutex);
+    {
+        pthread_cond_signal(&status->cond);
+    }
+    pthread_mutex_unlock(&status->mutex);
+}
+
+static inline void _preemption_status_wait(VIPreemptionStatus* status)
+{
+    pthread_mutex_lock(&status->mutex);
+    {
+        pthread_cond_wait(&status->cond, &status->mutex);
+    }
+    pthread_mutex_unlock(&status->mutex);
+}
+
+static inline struct VIWorkerStatus* _get_active_worker(const VIDispatcher* const restrict d)
 {
     struct VIWorkerStatus* res = NULL;
+    assert(d);
 
     if ( d->executing_worker > 0 && d->executing_worker <= d->n_workers )
     {
@@ -478,16 +684,25 @@ static inline struct VIWorkerStatus* get_active_worker(const VIDispatcher* const
     return res;
 }
 
+static inline void _preempt_thread(VIPreemptionStatus* const restrict status)
+{
+    assert(status);
+    pthread_sigqueue(status->tid, SIG_PREEMPTION_WORKERS, (union sigval) {.sival_ptr = status});
+    //TODO: check lifetime of pointer
+}
+
+static inline void _resume_thread_preemption(VIPreemptionStatus* const restrict status)
+{
+    assert(status);
+    _preemption_status_signal(status);
+}
+
 static void _th_irq_worker_signal_handler(int signal, siginfo_t* info, void* ctx)
 {
     assert(signal == SIG_PREEMPTION_WORKERS);
     (void) ctx;
 
-    struct VIWorkerStatus* status = info->si_value.sival_ptr;
+    VIPreemptionStatus* status = info->si_value.sival_ptr;
 
-    pthread_mutex_lock(&status->preemption_mutex);
-    {
-        pthread_cond_wait(&status->preemption_cond, &status->preemption_mutex);
-    }
-    pthread_mutex_unlock(&status->preemption_mutex);
+    _preemption_status_wait(status);
 }

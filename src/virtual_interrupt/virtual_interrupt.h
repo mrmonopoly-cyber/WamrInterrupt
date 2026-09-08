@@ -25,23 +25,41 @@ typedef int32_t IrqLine;
 typedef void (*IrqFuncHandler) (wasm_exec_env_t exec_env);
 typedef TEMPLATE_SPSCQ(IrqLine, 32) SPSCQ_UReq;
 
+typedef struct
+{
+    pthread_cond_t cond;
+    pthread_mutex_t mutex;
+    pthread_t tid;
+}VIPreemptionStatus;
+
+typedef struct
+{
+    pthread_cond_t* p_dispatcher_cond;
+    pthread_mutex_t* p_dispatcher_mutex;
+}VIDispatcherSignalRef;
+
 typedef struct __VirtualInterruptDispatcher
 {
+    struct VIMainFunStatus
+    {
+        VIPreemptionStatus preemption_status;
+        VIDispatcherSignalRef dispatcher_signal_ref;
+        bool working;
+
+    }main_f_status;
+
     struct VIWorkerStatus
     {
-        pthread_t tid;
-
         pthread_cond_t data_cond;
         pthread_mutex_t data_mutex;
 
-        pthread_cond_t preemption_cond;
-        pthread_mutex_t preemption_mutex;
+        VIPreemptionStatus preemption_status;
 
         size_t func_index;
         atomic_bool working;
 
-        pthread_cond_t* p_dispatcher_cond;
-        pthread_mutex_t* p_dispatcher_mutex;
+        VIDispatcherSignalRef dispatcher_signal_ref;
+
         IrqFuncHandler* p_funcs;
     }*workers;
     size_t n_workers;
@@ -61,6 +79,7 @@ typedef struct __VirtualInterruptDispatcher
 VIError vidispatcher_init(
         VIDispatcher* const restrict dispatcher,
         wasm_module_inst_t module_inst,
+        wasm_function_inst_t main_f,
         const size_t n_lines,
         const size_t depth);
 
