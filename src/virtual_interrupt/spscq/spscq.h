@@ -30,8 +30,8 @@
         __typeof__ (*QUEUE)* p_queue = (QUEUE);                                                 \
         ASSERT_CAP(p_queue);                                                                    \
         ASSERT_TYPES(typeof(*p_queue->data), typeof((DATA)));                                   \
-        const size_t read = atomic_load_explicit(&p_queue->write, memory_order_acquire);        \
-        const size_t write = atomic_load_explicit(&p_queue->read, memory_order_relaxed);        \
+        const size_t write = atomic_load_explicit(&p_queue->write, memory_order_acquire);       \
+        const size_t read = atomic_load_explicit(&p_queue->read, memory_order_relaxed);         \
         const size_t next_write = (write + 1) & ( EXTRACT_CAP(p_queue)  - 1 );                  \
         if ( read != next_write )                                                               \
         {                                                                                       \
@@ -39,6 +39,12 @@
             atomic_store_explicit(&p_queue->write, next_write, memory_order_release);           \
         }                                                                                       \
     }while(0);
+
+#define spscq_is_empty(QUEUE)                                                                   \
+    (                                                                                           \
+        atomic_load_explicit(&c_ureq->write, memory_order_relaxed) ==                           \
+        atomic_load_explicit(&c_ureq->read, memory_order_relaxed)                               \
+    )
 
 
 #define spscq_pop(QUEUE, OUT_PTR)                                                               \

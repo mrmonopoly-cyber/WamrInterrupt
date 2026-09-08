@@ -261,6 +261,11 @@ int main(int argc, char *argv[])
         }
     }
 
+    if ( (vi_err = vidispatcher_start(&vi_dispatcher)) )
+    {
+        GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
+    }
+
     //========================================fantastic logic=====================================
 
     printf("normal execution\n");
