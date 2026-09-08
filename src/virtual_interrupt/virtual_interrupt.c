@@ -538,6 +538,8 @@ static void* _th_dispatcher(void* arg)
             }
             else if( worker_finish ) //resume stopped worker
             {
+                printf("VIDispatcher: resuming suspended worker: %zu\n",
+                        dispatcher->executing_worker);
                 _preemption_status_signal(&old_worker->preemption_status);
                 break;
             }
@@ -604,6 +606,7 @@ static void* _th_dispatcher(void* arg)
         //THAN resume the main thread
         if ( !dispatcher->executing_worker && !dispatcher->main_f_status.working )
         {
+            printf("VIDispatcher: no worker is running, resuming main thread\n");
             _resume_thread_preemption(&dispatcher->main_f_status.preemption_status);
             dispatcher->main_f_status.working = true;
         }
