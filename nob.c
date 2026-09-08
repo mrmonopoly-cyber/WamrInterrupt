@@ -172,7 +172,7 @@ int main(int argc, char **argv)
 
     mkdir_if_not_exists(BUILD_DIR);
 
-    bool test = true;
+    bool test = false;
 
     if(test)
     {

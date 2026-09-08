@@ -6,31 +6,29 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "virtual_interrupt/virtual_interrupt.h"
 #include "wasm_export.h"
 #include "bh_read_file.h"
 
 static char error_buf[256] = {0};
-static wasm_function_inst_t irq_invalid_func;
-static wasm_function_inst_t irq_func;
 
 static pthread_mutex_t sigint_mut = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t sigint_cond = PTHREAD_COND_INITIALIZER;
 
-static pthread_mutex_t irq_exec_mut = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t irq_exec_cond = PTHREAD_COND_INITIALIZER;
-
 #define ArraySize(ARR) (sizeof(ARR)/sizeof(ARR[0]))
 #define INPUT_ERROR_BUF (error_buf), ArraySize((error_buf))
 #define GOTO_END goto end
-#define GOTO_END_AND_CUSTOM_ERROR(...)                  \
-    do{                                                 \
-        const char* msg[] = {__VA_ARGS__};              \
-        if(ArraySize(msg))                              \
-        {                                               \
-            snprintf(INPUT_ERROR_BUF, "%s", msg[0]);    \
-        }                                               \
-        GOTO_END;                                       \
+#define GOTO_END_AND_CUSTOM_ERROR_LINE(LINE, ...)                       \
+    do{                                                                 \
+        const char* msg[] = {__VA_ARGS__};                              \
+        if(ArraySize(msg))                                              \
+        {                                                               \
+            snprintf(INPUT_ERROR_BUF, "line: %d: %s", (LINE), msg[0]);  \
+        }                                                               \
+        GOTO_END;                                                       \
     }while(0);
+
+#define GOTO_END_AND_CUSTOM_ERROR(...) GOTO_END_AND_CUSTOM_ERROR_LINE(__LINE__, __VA_ARGS__) 
 
 typedef struct
 {
@@ -88,67 +86,6 @@ void worker_thread_cleanup(void* arg)
 
     if ( *th_exec_env ) wasm_runtime_destroy_exec_env(*th_exec_env);
     wasm_runtime_destroy_thread_env();
-}
-
-void interrupt_handler_thread_cleanup(void* arg)
-{
-    wasm_exec_env_t* th_exec_env = arg;
-    if ( *th_exec_env ) wasm_runtime_destroy_exec_env(*th_exec_env);
-    wasm_runtime_destroy_thread_env();
-}
-
-void* interrupt_handler_thread(void* arg)
-{
-    wasm_module_inst_t module_inst = arg;
-    wasm_exec_env_t exec_env = {};
-    sigset_t set = {0};
-    int err;
-
-    assert(module_inst);
-
-    sigemptyset(&set);
-    sigaddset(&set, SIGPOLL);
-
-    wasm_runtime_init_thread_env();
-    pthread_cleanup_push(worker_thread_cleanup, &exec_env);
-
-    if ( (err = pthread_sigmask(SIG_BLOCK, &set, NULL)) )
-    {
-        GOTO_END_AND_CUSTOM_ERROR(strerror(err));
-    }
-
-    if ( !(exec_env = wasm_runtime_create_exec_env(module_inst, 16 << 10)) )
-    {
-        GOTO_END_AND_CUSTOM_ERROR("failed creation of exec env");
-    }
-
-    while(1)
-    {
-        pthread_mutex_lock(&irq_exec_mut);
-        pthread_cond_wait(&irq_exec_cond, &irq_exec_mut);
-
-        pthread_testcancel();
-
-        printf("%s: running irq req\n", __func__);
-        if( irq_func && !wasm_runtime_call_wasm(exec_env, irq_func, 0 , NULL) )
-        {
-            fprintf(stderr, "error executing the irq_func: %s\n",
-                    wasm_runtime_get_exception(module_inst));
-        }
-
-        pthread_mutex_lock(&sigint_mut);
-        pthread_cond_signal(&sigint_cond);
-        pthread_mutex_unlock(&sigint_mut);
-
-        irq_func= NULL;
-        printf("%s: done\n", __func__);
-
-        pthread_mutex_unlock(&irq_exec_mut);
-    }
-
-end:
-    pthread_cleanup_pop(true);
-    return NULL;
 }
 
 void* worker_thread(void* arg)
@@ -209,25 +146,6 @@ end:
     return (void*) res;
 }
 
-static void trigger_interrupt(pthread_t th_id_worker, wasm_function_inst_t irq_func_to_exec)
-{
-    int err;
-
-    pthread_mutex_lock(&irq_exec_mut);
-    if ( (err = pthread_kill(th_id_worker, SIGPOLL)) )
-    {
-        GOTO_END_AND_CUSTOM_ERROR(strerror(err));
-    }
-    irq_func = irq_func_to_exec;
-    assert(irq_func);
-
-    pthread_cond_signal(&irq_exec_cond);
-    pthread_mutex_unlock(&irq_exec_mut);
-
-end:
-    return;
-}
-
 int main(int argc, char *argv[])
 {
     const char* input_file = argv[1];
@@ -244,12 +162,14 @@ int main(int argc, char *argv[])
     uintptr_t err;
     bool init_wamr_ok = false;
 
+    VIDispatcher vi_dispatcher = {0};
+    VIError vi_err = {0};
+
     wasm_module_t module = {};
     wasm_module_inst_t module_inst = {};
     wasm_exec_env_t main_exec_env = {};
-    wasm_function_inst_t irq_wamr_func_preloaded[ArraySize(irq_functions)] = {};
 
-    pthread_t th_id_workder, th_id_irq_exec = {0};
+    pthread_t th_id_workder;
 
     NativeSymbol native_symbols[] =
     {
@@ -322,23 +242,23 @@ int main(int argc, char *argv[])
         GOTO_END_AND_CUSTOM_ERROR("failed creating main_exec_env");
     }
 
-    for(size_t i=0; i<ArraySize(irq_functions); i++)
-    {
-        wasm_function_inst_t func = wasm_runtime_lookup_function(module_inst, irq_functions[i]);
-
-        if ( !func ) GOTO_END_AND_CUSTOM_ERROR("loading function for th_handler");
-
-        irq_wamr_func_preloaded[i] = func;
-    }
-
     if( (err = pthread_create(&th_id_workder, NULL, worker_thread, &func_arg)) )
     {
         GOTO_END_AND_CUSTOM_ERROR(strerror(err));
     }
 
-    if( (err = pthread_create(&th_id_irq_exec, NULL, interrupt_handler_thread, module_inst)) )
+    if ( (vi_err = vidispatcher_init(&vi_dispatcher, module_inst, 2, 4)) )
     {
-        GOTO_END_AND_CUSTOM_ERROR(strerror(err));
+        GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
+    }
+
+    for (size_t i=0; i<ArraySize(irq_functions); i++)
+    {
+        wasm_function_inst_t func = wasm_runtime_lookup_function(module_inst, irq_functions[i]);
+        if ( (vi_err = vidispatcher_assign_irq_to_line(&vi_dispatcher, func, i)) )
+        {
+            GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
+        }
     }
 
     //========================================fantastic logic=====================================
@@ -346,37 +266,12 @@ int main(int argc, char *argv[])
     printf("normal execution\n");
     sleep(2);
 
-    printf("interrupt th 1\n");
-    trigger_interrupt(th_id_workder, irq_wamr_func_preloaded[0]);
-
-    printf("normal execution\n");
-    sleep(3);
-
-    printf("interrupt th 2\n");
-    trigger_interrupt(th_id_workder, irq_wamr_func_preloaded[1]);
-
-    printf("normal execution\n");
-    sleep(3);
-
     //========================================stopping thread=====================================
     printf("cancelling thread\n");
-
-    irq_func = &irq_invalid_func;
 
     if ( (err =  pthread_cancel(th_id_workder)) )
     {
         GOTO_END_AND_CUSTOM_ERROR(strerror(err));
-    }
-
-    if ( (err =  pthread_cancel(th_id_irq_exec)) )
-    {
-        GOTO_END_AND_CUSTOM_ERROR(strerror(err));
-    }
-
-    pthread_join(th_id_irq_exec, &th_res);
-    if( th_res != PTHREAD_CANCELED )
-    {
-        GOTO_END_AND_CUSTOM_ERROR("invalid pthread_join res");
     }
 
     pthread_join(th_id_workder, &th_res);

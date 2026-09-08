@@ -1,9 +1,11 @@
 #pragma once
 
+#include <assert.h>
 #include <pthread.h>
 #include <stddef.h>
 #include <signal.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "wasm_export.h"
 #include "spscq/spscq.h"
@@ -15,10 +17,10 @@ typedef enum __VirtualInterruptError
     VIError_None=0,
     VIError_InvalidInput,
     VIError_WAMR,
-    VIError_Libc,         /* check errno */
+    VIError_Libc,           /* check errno */
 }VIError;
 
-typedef void (*IrqFuncHandler) (void);
+typedef void (*IrqFuncHandler) (wasm_exec_env_t exec_env);
 typedef TEMPLATE_SPSCQ(int32_t, 32) SPSCQ_UReq;
 
 typedef struct __VirtualInterruptDispatcher
@@ -33,11 +35,12 @@ typedef struct __VirtualInterruptDispatcher
         pthread_cond_t preemption_cond;
         pthread_mutex_t preemption_mutex;
 
-        IrqFuncHandler func;
+        size_t func_index;
         atomic_bool working;
 
         pthread_cond_t* p_dispatcher_cond;
         pthread_mutex_t* p_dispatcher_mutex;
+        IrqFuncHandler* p_funcs;
     }*workers;
     size_t n_workers;
 
@@ -67,3 +70,16 @@ VIError vidispatcher_assign_irq_to_line(
 VIError vidispatcher_start(VIDispatcher* const restrict dispatcher);
 
 void vidispatcher_destroy(VIDispatcher* const restrict dispatcher);
+
+static inline const char* vi_error_to_str(const VIError err)
+{
+    extern int VI_ERROR_ERRNO;
+    switch (err)
+    {
+        case VIError_None:                  return "";
+        case VIError_InvalidInput:          return "invalid input";
+        case VIError_WAMR:                  return "wamr error";
+        case VIError_Libc:                  return strerror(VI_ERROR_ERRNO);
+        default: assert(0 && "unreachable");
+    }
+}
