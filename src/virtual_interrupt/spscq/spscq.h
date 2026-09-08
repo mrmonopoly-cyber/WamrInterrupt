@@ -25,18 +25,23 @@
     }while(0);
 
 
-#define spscq_push(QUEUE, DATA)                                                                 \
+//OUT_RES: true => push ok
+//OUT_RES: false => push failed: queue is full
+#define spscq_push(QUEUE, DATA, OUT_RES)                                                        \
     do{                                                                                         \
         __typeof__ (*QUEUE)* p_queue = (QUEUE);                                                 \
         ASSERT_CAP(p_queue);                                                                    \
         ASSERT_TYPES(typeof(*p_queue->data), typeof((DATA)));                                   \
+        ASSERT_TYPES(typeof(*(OUT_RES)), bool);                                                 \
         const size_t write = atomic_load_explicit(&p_queue->write, memory_order_acquire);       \
         const size_t read = atomic_load_explicit(&p_queue->read, memory_order_relaxed);         \
         const size_t next_write = (write + 1) & ( EXTRACT_CAP(p_queue)  - 1 );                  \
+        *(OUT_RES) = false;                                                                     \
         if ( read != next_write )                                                               \
         {                                                                                       \
             p_queue->data[write] = (DATA);                                                      \
             atomic_store_explicit(&p_queue->write, next_write, memory_order_release);           \
+            *(OUT_RES) = true;                                                                  \
         }                                                                                       \
     }while(0);
 
@@ -70,6 +75,7 @@
 void spscq_test()
 {
     typedef TEMPLATE_SPSCQ(uint8_t, 4) SPSCQ_Test;
+    bool push_ok = false;
 
     SPSCQ_Test sd;
     const uint8_t data_push[EXTRACT_CAP(&sd)] = {21, 42};
@@ -77,8 +83,12 @@ void spscq_test()
 
     spscq_init(&sd);
 
-    spscq_push(&sd, data_push[0]);
-    spscq_push(&sd, data_push[1]);
+    spscq_push(&sd, data_push[0], &push_ok);
+    assert(push_ok);
+
+    spscq_push(&sd, data_push[1], &push_ok);
+    assert(push_ok);
+
 
     spscq_pop(&sd, &data_pop[0]);
     spscq_pop(&sd, &data_pop[1]);

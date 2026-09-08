@@ -139,7 +139,7 @@ VIError vidispatcher_init(
         status->func_index = 0;
         status->p_dispatcher_cond = &dispatcher->dispatcher_cond;
         status->p_dispatcher_mutex = &dispatcher->dispatcher_mutex;
-        status->p_funcs = dispatcher->funcs;
+        status->p_funcs = funcs;
         atomic_init(&status->working, false);
 
         if( ( err = pthread_create(&status->tid, NULL, _th_irq_worker, &arg) ) )
@@ -226,6 +226,33 @@ VIError vidispatcher_start(VIDispatcher* const restrict dispatcher)
         return VIError_Libc;
     }
 
+    return VIError_None;
+}
+
+VIError vidispatcher_trigger_interrupt(VIDispatcher* const restrict dispatcher, IrqLine line)
+{
+    bool push_ok = false;
+    if ( !dispatcher || line < 0  || (size_t) line >= dispatcher->n_funcs )
+    {
+        return VIError_InvalidInput;
+    }
+
+    spscq_push(&dispatcher->channel_ureq, line, &push_ok);
+
+    printf("user trigger interrupt: read: %ld, write: %ld\n",
+            atomic_load(&dispatcher->channel_ureq.read),
+            atomic_load(&dispatcher->channel_ureq.write));
+
+    if ( !push_ok )
+    {
+        return VIError_Queue;
+    }
+
+    pthread_mutex_lock(&dispatcher->dispatcher_mutex);
+    {
+        pthread_cond_signal(&dispatcher->dispatcher_cond);
+    }
+    pthread_mutex_unlock(&dispatcher->dispatcher_mutex);
     return VIError_None;
 }
 
@@ -353,13 +380,21 @@ static void* _th_dispatcher(void* arg)
     {
         bool worker_finish  = false;
 
-        pthread_mutex_lock(&dispatcher->dispatcher_mutex);
-        while( spscq_is_empty(c_ureq) && !strcmp(VI_ERROR_WAMR_EXCEPTION,VI_ERROR_WAMR_NO_EXCEPTION) )
+        if( spscq_is_empty(c_ureq) && !strcmp(VI_ERROR_WAMR_EXCEPTION,VI_ERROR_WAMR_NO_EXCEPTION) )
         {
-            printf("VIDispatcher: waiting for something to do\n");
-            pthread_cond_wait(&dispatcher->dispatcher_cond, &dispatcher->dispatcher_mutex);
+            printf("VIDispatcher: waiting for something to do: "
+                    "read: %ld, write: %ld, wamr_exception:--%s--\n",
+                    atomic_load(&dispatcher->channel_ureq.read),
+                    atomic_load(&dispatcher->channel_ureq.write),
+                    VI_ERROR_WAMR_EXCEPTION
+                  );
+            pthread_mutex_lock(&dispatcher->dispatcher_mutex);
+            {
+                pthread_cond_wait(&dispatcher->dispatcher_cond, &dispatcher->dispatcher_mutex);
+            }
+            pthread_mutex_unlock(&dispatcher->dispatcher_mutex);
+            printf("VIDispatcher: dispatcher weake up\n");
         }
-        pthread_mutex_unlock(&dispatcher->dispatcher_mutex);
 
 
         while( dispatcher->executing_worker )
@@ -389,6 +424,7 @@ static void* _th_dispatcher(void* arg)
         old_worker = get_active_worker(dispatcher);
         if( ureq != -1 && ( !old_worker || (size_t) ureq >= old_worker->func_index ) )
         {
+            printf("VIDispatcher: user give new irq req: %d\n", ureq);
             dispatcher->executing_worker++;
             assert(dispatcher->executing_worker < dispatcher->n_workers && "TODO: dynamic workers buffer");
             new_worker = get_active_worker(dispatcher);
@@ -396,19 +432,22 @@ static void* _th_dispatcher(void* arg)
             new_worker->func_index = ureq;
 
             //stop current worker (i)
-            pthread_mutex_lock(&old_worker->preemption_mutex);
+            if(old_worker)
             {
-                pthread_cond_signal(&old_worker->preemption_cond);
+                pthread_mutex_lock(&old_worker->preemption_mutex);
+                {
+                    pthread_cond_signal(&old_worker->preemption_cond);
+                }
+                pthread_mutex_unlock(&old_worker->preemption_mutex);
             }
-            pthread_mutex_unlock(&old_worker->preemption_mutex);
 
             //start new thread (i+1)
-            pthread_mutex_lock(&new_worker->preemption_mutex);
+            pthread_mutex_lock(&new_worker->data_mutex);
             {
                 atomic_store(&new_worker->working, true);
-                pthread_cond_signal(&new_worker->preemption_cond);
+                pthread_cond_signal(&new_worker->data_cond);
             }
-            pthread_mutex_unlock(&new_worker->preemption_mutex);
+            pthread_mutex_unlock(&new_worker->data_mutex);
         }
         else if( ureq != -1 ) 
         {

@@ -269,7 +269,23 @@ int main(int argc, char *argv[])
     //========================================fantastic logic=====================================
 
     printf("normal execution\n");
-    sleep(2);
+    usleep(3 * 1000 * 1000);
+
+    if ( (vi_err = vidispatcher_trigger_interrupt(&vi_dispatcher, 0)) )
+    {
+        GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
+    }
+
+    printf("normal execution\n");
+    usleep(3 * 1000 * 1000);
+
+    if ( (vi_err = vidispatcher_trigger_interrupt(&vi_dispatcher, 1)) )
+    {
+        GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
+    }
+
+    printf("normal execution\n");
+    usleep(3 * 1000 * 1000);
 
     //========================================stopping thread=====================================
     printf("cancelling thread\n");

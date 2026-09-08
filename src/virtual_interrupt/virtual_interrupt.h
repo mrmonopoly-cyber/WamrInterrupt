@@ -16,12 +16,14 @@ typedef enum __VirtualInterruptError
 {
     VIError_None=0,
     VIError_InvalidInput,
+    VIError_Queue,
     VIError_WAMR,
     VIError_Libc,           /* check errno */
 }VIError;
 
+typedef int32_t IrqLine;
 typedef void (*IrqFuncHandler) (wasm_exec_env_t exec_env);
-typedef TEMPLATE_SPSCQ(int32_t, 32) SPSCQ_UReq;
+typedef TEMPLATE_SPSCQ(IrqLine, 32) SPSCQ_UReq;
 
 typedef struct __VirtualInterruptDispatcher
 {
@@ -69,6 +71,8 @@ VIError vidispatcher_assign_irq_to_line(
 
 VIError vidispatcher_start(VIDispatcher* const restrict dispatcher);
 
+VIError vidispatcher_trigger_interrupt(VIDispatcher* const restrict dispatcher, IrqLine line);
+
 void vidispatcher_destroy(VIDispatcher* const restrict dispatcher);
 
 static inline const char* vi_error_to_str(const VIError err)
@@ -78,8 +82,10 @@ static inline const char* vi_error_to_str(const VIError err)
     {
         case VIError_None:                  return "";
         case VIError_InvalidInput:          return "invalid input";
+        case VIError_Queue:                 return "Internal Queue error: Full?";
         case VIError_WAMR:                  return "wamr error";
         case VIError_Libc:                  return strerror(VI_ERROR_ERRNO);
-        default: assert(0 && "unreachable");
     }
+
+    assert(0 && "unreachable");
 }
