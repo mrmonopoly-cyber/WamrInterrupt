@@ -21,7 +21,7 @@ typedef enum __VirtualInterruptError
     VIError_Libc,           /* check errno */
 }VIError;
 
-typedef int32_t IrqLine;
+typedef uint32_t IrqLine;
 typedef void (*IrqFuncHandler) (wasm_exec_env_t exec_env);
 typedef TEMPLATE_SPSCQ(IrqLine, 32) SPSCQ_UReq;
 
@@ -69,7 +69,15 @@ typedef struct __VirtualInterruptDispatcher
 
     pthread_cond_t dispatcher_cond;
     pthread_mutex_t dispatcher_mutex;
-    SPSCQ_UReq channel_ureq;
+
+    SPSCQ_UReq channel_ready_ureq;
+
+    struct 
+    {
+        SPSCQ_UReq channel_ureq;
+        //TODO: min heap for extraction
+    }wait_queue;
+
     pthread_t dispatcher_tid;
     size_t executing_worker; //INFO: 0 means None, K means workers[k-1] IS CURRENTLY EXECUTING
 
@@ -90,7 +98,7 @@ VIError vidispatcher_assign_irq_to_line(
 
 VIError vidispatcher_start(VIDispatcher* const restrict dispatcher);
 
-VIError vidispatcher_trigger_interrupt(VIDispatcher* const restrict dispatcher, IrqLine line);
+VIError vidispatcher_trigger_interrupt(VIDispatcher* const restrict dispatcher, const IrqLine line);
 
 void vidispatcher_destroy(VIDispatcher* const restrict dispatcher);
 

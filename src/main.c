@@ -162,7 +162,7 @@ int main(int argc, char *argv[])
     }
 
     printf("normal execution\n");
-    usleep(3 * 1000 * 1000);
+    usleep(2 * 1000 * 1000);
 
     if ( (vi_err = vidispatcher_trigger_interrupt(&vi_dispatcher, 1)) )
     {
@@ -170,7 +170,7 @@ int main(int argc, char *argv[])
     }
 
     printf("normal execution\n");
-    usleep(3 * 1000 * 1000);
+    usleep(6 * 1000 * 1000);
 
     //========================================stopping thread=====================================
     printf("cancelling thread\n");

@@ -83,7 +83,8 @@ VIError vidispatcher_init(
     }
 
 //======================================init queues==========================================
-    spscq_init(&dispatcher->channel_ureq);
+    spscq_init(&dispatcher->channel_ready_ureq);
+    spscq_init(&dispatcher->wait_queue.channel_ureq);
 
 //======================================init signals=========================================
     struct sigaction sa ={0};
@@ -293,23 +294,31 @@ VIError vidispatcher_start(VIDispatcher* const restrict dispatcher)
     return VIError_None;
 }
 
-VIError vidispatcher_trigger_interrupt(VIDispatcher* const restrict dispatcher, IrqLine line)
+VIError vidispatcher_trigger_interrupt(VIDispatcher* const restrict dispatcher, const IrqLine line)
 {
-    bool push_ok = false;
-    if ( !dispatcher || line < 0  || (size_t) line >= dispatcher->n_funcs )
+    bool spsc_op_ok = false;
+    IrqLine prev_line = -1;
+
+    if ( !dispatcher || (size_t) line >= dispatcher->n_funcs )
     {
         return VIError_InvalidInput;
     }
 
-    spscq_push(&dispatcher->channel_ureq, line, &push_ok);
-
     printf("user trigger interrupt: read: %ld, write: %ld\n",
-            atomic_load(&dispatcher->channel_ureq.read),
-            atomic_load(&dispatcher->channel_ureq.write));
+            atomic_load(&dispatcher->channel_ready_ureq.read),
+            atomic_load(&dispatcher->channel_ready_ureq.write));
 
-    if ( !push_ok )
+    spscq_peek_last_pushed(&dispatcher->channel_ready_ureq, &prev_line, &spsc_op_ok);
+
+    if ( !spsc_op_ok || line >= prev_line )
     {
-        return VIError_Queue;
+        spscq_push(&dispatcher->channel_ready_ureq, line, &spsc_op_ok);
+        if ( !spsc_op_ok ) return VIError_Queue;
+    }
+    else
+    {
+        spscq_push(&dispatcher->wait_queue.channel_ureq, line, &spsc_op_ok);
+        if ( !spsc_op_ok ) return VIError_Queue;
     }
 
     pthread_mutex_lock(&dispatcher->dispatcher_mutex);
@@ -317,6 +326,7 @@ VIError vidispatcher_trigger_interrupt(VIDispatcher* const restrict dispatcher, 
         pthread_cond_signal(&dispatcher->dispatcher_cond);
     }
     pthread_mutex_unlock(&dispatcher->dispatcher_mutex);
+
     return VIError_None;
 }
 
@@ -496,9 +506,10 @@ static void* _th_dispatcher(void* arg)
 {
     uintptr_t res = VIError_None;
     VIDispatcher* dispatcher = arg;
-    int32_t ureq = -1;
+    IrqLine ureq;
     struct VIWorkerStatus* old_worker, *new_worker;
-    SPSCQ_UReq* c_ureq = &dispatcher->channel_ureq;
+    SPSCQ_UReq* c_ureq = &dispatcher->channel_ready_ureq;
+    bool spscq_op_ok = false;
 
 //========================================init==================================================
     assert(dispatcher);
@@ -513,8 +524,8 @@ static void* _th_dispatcher(void* arg)
         {
             printf("VIDispatcher: waiting for something to do: "
                     "read: %ld, write: %ld, wamr_exception:--%s--\n",
-                    atomic_load(&dispatcher->channel_ureq.read),
-                    atomic_load(&dispatcher->channel_ureq.write),
+                    atomic_load(&dispatcher->channel_ready_ureq.read),
+                    atomic_load(&dispatcher->channel_ready_ureq.write),
                     VI_ERROR_WAMR_EXCEPTION
                   );
             pthread_mutex_lock(&dispatcher->dispatcher_mutex);
@@ -554,9 +565,9 @@ static void* _th_dispatcher(void* arg)
         //there is no executing_worker THAN set suspended the current executing_worker and
         //set up a new executing_worker to handle the user request
         //IF the main was running it is be suspended
-        spscq_pop(&dispatcher->channel_ureq, &ureq);
+        spscq_pop(&dispatcher->channel_ready_ureq, &ureq, &spscq_op_ok);
         old_worker = _get_active_worker(dispatcher);
-        if( ureq != -1 && ( !old_worker || (size_t) ureq >= old_worker->func_index ) )
+        if(spscq_op_ok && ( !old_worker || (size_t) ureq >= old_worker->func_index ) )
         {
             printf("VIDispatcher: user give new irq req: %d\n", ureq);
             dispatcher->executing_worker++;
@@ -592,13 +603,6 @@ static void* _th_dispatcher(void* arg)
             }
             pthread_mutex_unlock(&new_worker->data_mutex);
         }
-        // user req has lower priority than what is currently executing
-        else if( ureq != -1 )
-        {
-            assert(0 && "waiting queue");
-            //TODO: waiting queue?
-        }
-        ureq = -1;
 
         assert(!(dispatcher->executing_worker && dispatcher->main_f_status.working));
 
