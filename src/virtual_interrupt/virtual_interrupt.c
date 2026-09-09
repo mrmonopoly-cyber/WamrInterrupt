@@ -741,21 +741,26 @@ static inline VIWorkerStatus* _prepare_new_worker(
         VIDispatcher* const restrict d, const IrqLine func_index)
 {
     VIWorkerStatus* worker = NULL;
+    SpanError span_out_status;
 
     assert(d);
+
+    if ( d->executing_worker == span_len(&d->workers) - 1 )
+    {
+        span_alloc_up_to(&d->workers, d->executing_worker << 1, &span_out_status);
+
+        assert( span_out_status == SpanError_None );
+    }
+
     d->executing_worker++;
-    assert(d->executing_worker < span_len(&d->workers) && "TODO: dynamic workers buffer");
 
     worker = _get_active_worker(d);
 
-    if ( worker )
-    {
-        worker->func_index = func_index;
-        return worker;
-    }
+    assert( worker );
 
-    return NULL;
+    worker->func_index = func_index;
 
+    return worker;
 }
 
 static inline VIWorkerStatus* _get_active_worker(const VIDispatcher* const restrict d)
