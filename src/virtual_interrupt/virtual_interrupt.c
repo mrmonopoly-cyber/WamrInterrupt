@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include "spscq/spscq.h"
+#include "minheap/minheap.h"
 #include "wasm_export.h"
 
 typedef struct
