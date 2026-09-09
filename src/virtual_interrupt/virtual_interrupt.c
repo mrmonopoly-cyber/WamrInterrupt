@@ -9,8 +9,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "spscq/spscq.h"
 #include "minheap/minheap.h"
+#include "spscq/spscq.h"
 #include "wasm_export.h"
 
 typedef struct
@@ -86,6 +86,7 @@ VIError vidispatcher_init(
 //======================================init queues==========================================
     spscq_init(&dispatcher->channel_ready_ureq);
     spscq_init(&dispatcher->wait_queue.channel_ureq);
+    minheap_init(&dispatcher->wait_queue.minheap_ureq);
 
 //======================================init signals=========================================
     struct sigaction sa ={0};

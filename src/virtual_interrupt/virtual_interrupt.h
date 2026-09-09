@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "minheap/minheap.h"
 #include "wasm_export.h"
 #include "spscq/spscq.h"
 
@@ -24,6 +25,7 @@ typedef enum __VirtualInterruptError
 typedef uint32_t IrqLine;
 typedef void (*IrqFuncHandler) (wasm_exec_env_t exec_env);
 typedef TEMPLATE_SPSCQ(IrqLine, 32) SPSCQ_UReq;
+typedef MINHEAP_TEMPLATE(IrqLine, 32) MinheapUReq;
 
 typedef struct
 {
@@ -75,7 +77,7 @@ typedef struct __VirtualInterruptDispatcher
     struct 
     {
         SPSCQ_UReq channel_ureq;
-        //TODO: min heap for extraction
+        MinheapUReq minheap_ureq;
     }wait_queue;
 
     pthread_t dispatcher_tid;
