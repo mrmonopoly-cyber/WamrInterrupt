@@ -103,6 +103,8 @@
         }                                                                                       \
     }while(0);
 
+#define minheap_is_empty(MINHEAP) ( (MINHEAP)->len == 0 )
+
 
 
 #ifdef ENABLE_TESTS
