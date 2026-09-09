@@ -51,6 +51,12 @@ static inline struct VIWorkerStatus* _get_active_worker(const VIDispatcher* cons
 static inline struct VIWorkerStatus* _prepare_new_worker(
         VIDispatcher* const restrict d, const IrqLine func_index);
 
+static VIError _init_worker(
+        struct VIWorkerStatus* const restrict status,
+        const wasm_module_inst_t module_inst,
+        IrqFuncHandler* funcs,
+        VIDispatcherSignalStatus* signal_status);
+
 #define VI_ERROR_WAMR_NO_EXCEPTION  ""
 
 int VI_ERROR_ERRNO;
@@ -176,59 +182,9 @@ VIError vidispatcher_init(
 //======================================init workers==========================================
     for(size_t i=0; i<depth; i++)
     {
-        int err;
-        struct VIWorkerStatus* status = &workers[i];
-        ThWorkersArg arg = {
-            .module_inst = module_inst,
-            .status = status,
-            .out = -1};
+        res = _init_worker(&workers[i], module_inst, funcs, &dispatcher->signal_status);
 
-        if ( (err = pthread_cond_init(&status->data_cond, NULL)) )
-        {
-            res =VIError_Libc;
-            errno = err;
-            VI_ERROR_ERRNO = errno;
-            goto end;
-        }
-
-        if ( (err = pthread_mutex_init(&status->data_mutex, NULL)) )
-        {
-            res =VIError_Libc;
-            errno = err;
-            VI_ERROR_ERRNO = errno;
-            goto end;
-        }
-
-        if ( (err = _init_preemption_status(&status->preemption_status)) )
-        {
-            res =VIError_Libc;
-            errno = err;
-            VI_ERROR_ERRNO = errno;
-            goto end;
-        }
-
-        status->func_index = 0;
-        status->p_dispatcher_signal_status = &dispatcher->signal_status;
-        // status->dispatcher_signal_ref = _new_dispatcher_signal_ref(dispatcher);
-        status->p_funcs = funcs;
-        atomic_init(&status->working, false);
-
-        if( ( err = pthread_create(&status->preemption_status.tid, NULL, _th_irq_worker, &arg) ) )
-        {
-            errno = err;
-            VI_ERROR_ERRNO = errno;
-            res = VIError_Libc;
-            goto end;
-        }
-
-        //spinlock
-        while(arg.out == -1);
-
-        if (arg.out != VIError_None)
-        {
-            res = VIError_WAMR;
-            goto end;
-        }
+        if ( res != VIError_None ) goto end;
 
         workers_ok++;
     }
@@ -637,6 +593,70 @@ static void* _th_dispatcher(void* arg)
 
 //====================================end==================================================
     return (void*) res;
+}
+
+static VIError _init_worker(
+        struct VIWorkerStatus* const restrict status,
+        const wasm_module_inst_t module_inst,
+        IrqFuncHandler* funcs,
+        VIDispatcherSignalStatus* signal_status)
+{
+    VIError res =VIError_None;
+
+    int err;
+    ThWorkersArg arg = {
+        .module_inst = module_inst,
+        .status = status,
+        .out = -1};
+
+    if ( (err = pthread_cond_init(&status->data_cond, NULL)) )
+    {
+        res =VIError_Libc;
+        errno = err;
+        VI_ERROR_ERRNO = errno;
+        goto end;
+    }
+
+    if ( (err = pthread_mutex_init(&status->data_mutex, NULL)) )
+    {
+        res =VIError_Libc;
+        errno = err;
+        VI_ERROR_ERRNO = errno;
+        goto end;
+    }
+
+    if ( (err = _init_preemption_status(&status->preemption_status)) )
+    {
+        res =VIError_Libc;
+        errno = err;
+        VI_ERROR_ERRNO = errno;
+        goto end;
+    }
+
+    status->func_index = 0;
+    status->p_dispatcher_signal_status = signal_status;
+    status->p_funcs = funcs;
+    atomic_init(&status->working, false);
+
+    if( ( err = pthread_create(&status->preemption_status.tid, NULL, _th_irq_worker, &arg) ) )
+    {
+        errno = err;
+        VI_ERROR_ERRNO = errno;
+        res = VIError_Libc;
+        goto end;
+    }
+
+    //spinlock
+    while(arg.out == -1);
+
+    if (arg.out != VIError_None)
+    {
+        res = VIError_WAMR;
+        goto end;
+    }
+
+end:
+    return res;
 }
 
 static inline void _suspend_main_thread(struct VIMainFunStatus* const restrict main_thread)
