@@ -14,6 +14,9 @@ typedef struct CCliUserArgs{
     bool help;
     bool verbose;
     bool test;
+    bool run;
+    bool build;
+    bool clean;
 }CliArgs;
 
 static CliArgs args;
@@ -76,6 +79,8 @@ static bool f_build_wamr(void)
 
     cmd_append(&cmd, "cmake");
     cmd_append(&cmd, "--build", BUILD_DIR"/wamr");
+
+    if ( args.verbose ) cmd_append(&cmd, "--verbose");
 
     if ( !( res = cmd_run(&cmd) ) ) goto end;
 
@@ -174,6 +179,12 @@ static bool f_run(void)
     return res;
 }
 
+static bool walk_delete(Walk_Entry entry)
+{
+    delete_file(entry.path);
+    return true;
+}
+
 int main(int argc, char **argv)
 {
     GO_REBUILD_URSELF_PLUS(argc, argv,
@@ -192,37 +203,46 @@ int main(int argc, char **argv)
 
     mkdir_if_not_exists(BUILD_DIR);
 
-    //wamr
-    if(!f_build_wamr())
+    if(args.build)
     {
-        nob_log(ERROR, "failed building wamr");
-        return 1;
-    }
-
-    //source directories
-    FOR_EACH_FAT_ARRAY_STR(default_src_dir_opts(), dir)
-    {
-        if(dir)
+        //wamr
+        if(!f_build_wamr())
         {
-            nob_log(INFO, "compiling sources in src: %s", dir);
-            if(!walk_dir(dir, f_compile))
+            nob_log(ERROR, "failed building wamr");
+            return 1;
+        }
+
+        //source directories
+        FOR_EACH_FAT_ARRAY_STR(default_src_dir_opts(), dir)
+        {
+            if(dir)
             {
-                nob_log(ERROR, "failed compiling sources in %s", dir);
-                return 1;
+                nob_log(INFO, "compiling sources in src: %s", dir);
+                if(!walk_dir(dir, f_compile))
+                {
+                    nob_log(ERROR, "failed compiling sources in %s", dir);
+                    return 1;
+                }
             }
+        }
+
+        if(!f_link())
+        {
+            nob_log(ERROR, "failed liking");
+            return 1;
         }
     }
 
-    if(!f_link())
-    {
-        nob_log(ERROR, "failed liking");
-        return 1;
-    }
 
-    if( !f_run() )
+    if( args.run && !f_run() )
     {
         nob_log(ERROR, "failed running");
         return 1;
+    }
+
+    if ( args.clean )
+    {
+        walk_dir(BUILD_DIR, walk_delete, .post_order = true);
     }
 
 
@@ -234,6 +254,9 @@ int main(int argc, char **argv)
 #include "BuildDependencies/c_cli.h"
 
 CCLI_PARSER_DECLARE(test);
+CCLI_PARSER_DECLARE(build);
+CCLI_PARSER_DECLARE(run);
+CCLI_PARSER_DECLARE(clean);
 
 static const CCliArgDef defs[] = 
 {
@@ -245,11 +268,40 @@ static const CCliArgDef defs[] =
         .f_description = "run the tests",
         .f_parser = CCLI_PARSER_NAME(test),
     },
+
+    //--build, -b
+    {
+        .f_long = CCLI_LONG_FLAG(build),
+        .f_short = CCLI_SHORT_FLAG(b),
+        .f_args = CCLI_NO_ARG,
+        .f_description = "build the sources",
+        .f_parser = CCLI_PARSER_NAME(build),
+    },
+
+    //--run, -r
+    {
+        .f_long = CCLI_LONG_FLAG(run),
+        .f_short = CCLI_SHORT_FLAG(r),
+        .f_args = CCLI_NO_ARG,
+        .f_description = "run the sources",
+        .f_parser = CCLI_PARSER_NAME(run),
+    },
+
+    //--clean, -c
+    {
+        .f_long = CCLI_LONG_FLAG(clean),
+        .f_short = CCLI_SHORT_FLAG(c),
+        .f_args = CCLI_NO_ARG,
+        .f_description = "clean the sources",
+        .f_parser = CCLI_PARSER_NAME(clean),
+    },
 };
 
 static void cli_default(CliArgs* const restrict args)
 {
     args->test = false;
+    args->build = true;
+    args->run = true;
 }
 
 static inline bool cli_parse(CliArgs* args, const int argc, char** argv)
@@ -259,6 +311,26 @@ static inline bool cli_parse(CliArgs* args, const int argc, char** argv)
 
 CCLI_PARSER_DECLARE_FULL(test, args, ctx)
 {
+    args->build = true;
+    args->run= true;
     args->test = true;
+    return CCliActionOK;
+}
+
+CCLI_PARSER_DECLARE_FULL(build, args, ctx)
+{
+    args->build = true;
+    return CCliActionOK;
+}
+
+CCLI_PARSER_DECLARE_FULL(run, args, ctx)
+{
+    args->run = true;
+    return CCliActionOK;
+}
+
+CCLI_PARSER_DECLARE_FULL(clean, args, ctx)
+{
+    args->clean = true;
     return CCliActionOK;
 }
