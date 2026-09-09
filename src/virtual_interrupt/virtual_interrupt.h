@@ -32,7 +32,7 @@ typedef enum __VirtualInterruptError
     VIError_Libc,           /* check errno */
 }VIError;
 
-typedef uint32_t IrqLine;
+typedef size_t IrqLine;
 typedef void (*IrqFuncHandler) (wasm_exec_env_t exec_env);
 typedef TEMPLATE_SPSCQ(IrqLine, READY_QUEUE_CAP) SPSCQ_UReq;
 typedef MINHEAP_TEMPLATE(IrqLine, WAIT_QUEUE_CAP) MinheapUReq;
@@ -46,16 +46,16 @@ typedef struct
 
 typedef struct
 {
-    pthread_cond_t* p_dispatcher_cond;
-    pthread_mutex_t* p_dispatcher_mutex;
-}VIDispatcherSignalRef;
+    pthread_cond_t cond;
+    pthread_mutex_t mutex;
+}VIDispatcherSignalStatus;
 
 typedef struct __VirtualInterruptDispatcher
 {
     struct VIMainFunStatus
     {
         VIPreemptionStatus preemption_status;
-        VIDispatcherSignalRef dispatcher_signal_ref;
+        VIDispatcherSignalStatus* p_dispatcher_signal_status;
         bool working;
 
     }main_f_status;
@@ -70,7 +70,7 @@ typedef struct __VirtualInterruptDispatcher
         size_t func_index;
         atomic_bool working;
 
-        VIDispatcherSignalRef dispatcher_signal_ref;
+        VIDispatcherSignalStatus* p_dispatcher_signal_status;
 
         IrqFuncHandler* p_funcs;
     }*workers;
@@ -79,8 +79,7 @@ typedef struct __VirtualInterruptDispatcher
     IrqFuncHandler* funcs;
     size_t n_funcs;
 
-    pthread_cond_t dispatcher_cond;
-    pthread_mutex_t dispatcher_mutex;
+    VIDispatcherSignalStatus signal_status;
 
     SPSCQ_UReq channel_ready_ureq;
     MinheapUReq minheap_ureq;

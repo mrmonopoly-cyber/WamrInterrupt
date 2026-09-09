@@ -40,8 +40,7 @@ static inline void _suspend_main_thread(struct VIMainFunStatus* const restrict m
 static inline void _preempt_thread(VIPreemptionStatus* const restrict main_f);
 static inline void _resume_thread_preemption(VIPreemptionStatus* const restrict status);
 
-static inline VIDispatcherSignalRef _new_dispatcher_signal_ref(VIDispatcher* const restrict d);
-static inline void _dispatcher_signal(VIDispatcherSignalRef* status);
+static inline void _dispatcher_signal(VIDispatcherSignalStatus* status);
 
 static inline int _init_preemption_status(VIPreemptionStatus* status);
 static inline void _preemption_status_signal(VIPreemptionStatus* status);
@@ -113,8 +112,8 @@ VIError vidispatcher_init(
         goto end;
     }
 
-    //================================init dispatcher conds/mutex=============================
-    if ( (err = pthread_cond_init(&dispatcher->dispatcher_cond, NULL)) )
+//==================================init dispatcher conds/mutex=============================
+    if ( (err = pthread_cond_init(&dispatcher->signal_status.cond, NULL)) )
     {
         res =VIError_Libc;
         errno = err;
@@ -122,7 +121,7 @@ VIError vidispatcher_init(
         goto end;
     }
 
-    if ( (err = pthread_mutex_init(&dispatcher->dispatcher_mutex, NULL)) )
+    if ( (err = pthread_mutex_init(&dispatcher->signal_status.mutex, NULL)) )
     {
         res =VIError_Libc;
         errno = err;
@@ -142,7 +141,7 @@ VIError vidispatcher_init(
         goto end;
     }
 
-    main_f_status->dispatcher_signal_ref = _new_dispatcher_signal_ref(dispatcher);
+    main_f_status->p_dispatcher_signal_status = &dispatcher->signal_status;
 
     {
         ThMainThreadArg arg = {
@@ -209,7 +208,8 @@ VIError vidispatcher_init(
         }
 
         status->func_index = 0;
-        status->dispatcher_signal_ref = _new_dispatcher_signal_ref(dispatcher);
+        status->p_dispatcher_signal_status = &dispatcher->signal_status;
+        // status->dispatcher_signal_ref = _new_dispatcher_signal_ref(dispatcher);
         status->p_funcs = funcs;
         atomic_init(&status->working, false);
 
@@ -259,8 +259,8 @@ end:
         pthread_cond_destroy(&worker->preemption_status.cond);
     }
 
-    pthread_mutex_destroy(&dispatcher->dispatcher_mutex);
-    pthread_cond_destroy(&dispatcher->dispatcher_cond);
+    pthread_mutex_destroy(&dispatcher->signal_status.mutex);
+    pthread_cond_destroy(&dispatcher->signal_status.cond);
     if (workers) free(workers);
     if (funcs) free(funcs);
     return res;
@@ -303,30 +303,13 @@ VIError vidispatcher_start(VIDispatcher* const restrict dispatcher)
 VIError vidispatcher_trigger_interrupt(VIDispatcher* const restrict dispatcher, const IrqLine line)
 {
     bool spsc_op_ok = false;
-    IrqLine prev_line = -1;
 
-    if ( !dispatcher || (size_t) line >= dispatcher->n_funcs )
-    {
-        return VIError_InvalidInput;
-    }
+    if ( !dispatcher || line >= dispatcher->n_funcs ) return VIError_InvalidInput;
 
-    printf("user trigger interrupt: read: %ld, write: %ld\n",
-            atomic_load(&dispatcher->channel_ready_ureq.read),
-            atomic_load(&dispatcher->channel_ready_ureq.write));
+    spscq_push(&dispatcher->channel_ready_ureq, line, &spsc_op_ok);
+    if ( !spsc_op_ok ) return VIError_Queue;
 
-    spscq_peek_last_pushed(&dispatcher->channel_ready_ureq, &prev_line, &spsc_op_ok);
-
-    if ( !spsc_op_ok || line >= prev_line )
-    {
-        spscq_push(&dispatcher->channel_ready_ureq, line, &spsc_op_ok);
-        if ( !spsc_op_ok ) return VIError_Queue;
-    }
-
-    pthread_mutex_lock(&dispatcher->dispatcher_mutex);
-    {
-        pthread_cond_signal(&dispatcher->dispatcher_cond);
-    }
-    pthread_mutex_unlock(&dispatcher->dispatcher_mutex);
+    _dispatcher_signal(&dispatcher->signal_status);
 
     return VIError_None;
 }
@@ -352,8 +335,8 @@ void vidispatcher_destroy(VIDispatcher* const restrict dispatcher)
             pthread_cond_destroy(&worker->preemption_status.cond);
         }
 
-        pthread_mutex_destroy(&dispatcher->dispatcher_mutex);
-        pthread_cond_destroy(&dispatcher->dispatcher_cond);
+        pthread_mutex_destroy(&dispatcher->signal_status.mutex);
+        pthread_cond_destroy(&dispatcher->signal_status.cond);
         if ( dispatcher->workers ) free(dispatcher->workers);
         if ( dispatcher->funcs ) free(dispatcher->funcs);
         
@@ -406,7 +389,7 @@ static void* _th_main_thread(void* arg)
     }
     th_arg->out = VIError_None;
 
-    //====================================logic=================================================
+//=======================================logic=================================================
     th_arg->status->working = true;
     if ( wasm_runtime_call_wasm(th_exec_env, th_arg->main_f, 0, NULL) )
     {
@@ -415,9 +398,9 @@ static void* _th_main_thread(void* arg)
 
     //INFO: if we reach here it means that the main has ended for any reason which is probably
     //an error unless the hole program ended
-    _dispatcher_signal(&th_arg->status->dispatcher_signal_ref);
+    _dispatcher_signal(th_arg->status->p_dispatcher_signal_status);
 
-    //====================================end==================================================
+//=======================================end==================================================
 end:
     pthread_cleanup_pop(true);
     return (void*) res;
@@ -466,7 +449,7 @@ static void* _th_irq_worker(void* arg)
 //=======================================logic=================================================
     while(1)
     {
-        VIDispatcherSignalRef* disp_sig_ref = &status->dispatcher_signal_ref;
+        VIDispatcherSignalStatus* disp_sig_ref = status->p_dispatcher_signal_status;
         
         assert(disp_sig_ref);
 
@@ -529,11 +512,11 @@ static void* _th_dispatcher(void* arg)
                     atomic_load(&dispatcher->channel_ready_ureq.write),
                     VI_ERROR_WAMR_EXCEPTION
                   );
-            pthread_mutex_lock(&dispatcher->dispatcher_mutex);
+            pthread_mutex_lock(&dispatcher->signal_status.mutex);
             {
-                pthread_cond_wait(&dispatcher->dispatcher_cond, &dispatcher->dispatcher_mutex);
+                pthread_cond_wait(&dispatcher->signal_status.cond, &dispatcher->signal_status.mutex);
             }
-            pthread_mutex_unlock(&dispatcher->dispatcher_mutex);
+            pthread_mutex_unlock(&dispatcher->signal_status.mutex);
             printf("VIDispatcher: dispatcher weake up\n");
         }
 
@@ -570,7 +553,7 @@ static void* _th_dispatcher(void* arg)
         old_worker = _get_active_worker(dispatcher);
         if(spscq_op_ok && ( !old_worker || (size_t) ureq >= old_worker->func_index ) )
         {
-            printf("VIDispatcher: user give new irq req: %d\n", ureq);
+            printf("VIDispatcher: user give new irq req: %zu\n", ureq);
 
             new_worker = _prepare_new_worker(dispatcher, ureq);
             assert(new_worker);
@@ -596,7 +579,7 @@ static void* _th_dispatcher(void* arg)
         else if ( spscq_op_ok )
         {
             bool minheap_push_ok = false;
-            printf("VIDispatcher: user request %d, has lower prority, saving on wait queue\n",
+            printf("VIDispatcher: user request %zu, has lower prority, saving on wait queue\n",
                     ureq);
 
             assert(ureq < old_worker->func_index);
@@ -611,7 +594,7 @@ static void* _th_dispatcher(void* arg)
         {
             bool pop_ok = false;
 
-            printf("VIDispatcher: no worker active popping from wait queue: %d\n", ureq);
+            printf("VIDispatcher: no worker active popping from wait queue: %zu\n", ureq);
             minheap_pop(&dispatcher->minheap_ureq, &ureq, &pop_ok);
 
             //pop MUST succeed since we just checked if the wait queue has elements in it 
@@ -627,7 +610,7 @@ static void* _th_dispatcher(void* arg)
             assert( dispatcher->executing_worker == 1 && !dispatcher->main_f_status.working );
 
             //start thread (1)
-            printf("VIDispatcher: starting new worker from wait queue. (Req: %d, Worker: %zu)\n",
+            printf("VIDispatcher: starting new worker from wait queue. (Req: %zu, Worker: %zu)\n",
                     ureq, dispatcher->executing_worker);
             _start_worker(new_worker);
         }
@@ -677,25 +660,15 @@ static inline int _init_preemption_status(VIPreemptionStatus* status)
     return res;
 }
 
-static inline VIDispatcherSignalRef _new_dispatcher_signal_ref(VIDispatcher* const restrict d)
+static inline void _dispatcher_signal(VIDispatcherSignalStatus* const restrict status)
 {
-    assert(d);
-    return (VIDispatcherSignalRef)
-    {
-        .p_dispatcher_cond = &d->dispatcher_cond,
-        .p_dispatcher_mutex = &d->dispatcher_mutex,
-    };
-}
+    assert(status);
 
-static inline void _dispatcher_signal(VIDispatcherSignalRef* status)
-{
-    assert(status && status->p_dispatcher_mutex && status->p_dispatcher_cond);
-
-    pthread_mutex_lock(status->p_dispatcher_mutex);
+    pthread_mutex_lock(&status->mutex);
     {
-        pthread_cond_signal(status->p_dispatcher_cond);
+        pthread_cond_signal(&status->cond);
     }
-    pthread_mutex_unlock(status->p_dispatcher_mutex);
+    pthread_mutex_unlock(&status->mutex);
 }
 
 static inline void _preemption_status_signal(VIPreemptionStatus* status)
