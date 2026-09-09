@@ -35,6 +35,8 @@ static void* _th_dispatcher(void* arg);
 static void _th_irq_worker_cleanup(void* arg);
 static void _th_irq_worker_signal_handler(int signal, siginfo_t* info, void* ctx);
 
+static inline void _suspend_main_thread(struct VIMainFunStatus* const restrict main_thread);
+
 static inline void _preempt_thread(VIPreemptionStatus* const restrict main_f);
 static inline void _resume_thread_preemption(VIPreemptionStatus* const restrict status);
 
@@ -45,7 +47,10 @@ static inline int _init_preemption_status(VIPreemptionStatus* status);
 static inline void _preemption_status_signal(VIPreemptionStatus* status);
 static inline void _preemption_status_wait(VIPreemptionStatus* status);
 
+static inline void _start_worker(struct VIWorkerStatus* worker);
 static inline struct VIWorkerStatus* _get_active_worker(const VIDispatcher* const restrict d);
+static inline struct VIWorkerStatus* _prepare_new_worker(
+        VIDispatcher* const restrict d, const IrqLine func_index);
 
 #define VI_ERROR_WAMR_NO_EXCEPTION  ""
 
@@ -85,8 +90,7 @@ VIError vidispatcher_init(
 
 //======================================init queues==========================================
     spscq_init(&dispatcher->channel_ready_ureq);
-    spscq_init(&dispatcher->wait_queue.channel_ureq);
-    minheap_init(&dispatcher->wait_queue.minheap_ureq);
+    minheap_init(&dispatcher->minheap_ureq);
 
 //======================================init signals=========================================
     struct sigaction sa ={0};
@@ -315,11 +319,6 @@ VIError vidispatcher_trigger_interrupt(VIDispatcher* const restrict dispatcher, 
     if ( !spsc_op_ok || line >= prev_line )
     {
         spscq_push(&dispatcher->channel_ready_ureq, line, &spsc_op_ok);
-        if ( !spsc_op_ok ) return VIError_Queue;
-    }
-    else
-    {
-        spscq_push(&dispatcher->wait_queue.channel_ureq, line, &spsc_op_ok);
         if ( !spsc_op_ok ) return VIError_Queue;
     }
 
@@ -572,19 +571,12 @@ static void* _th_dispatcher(void* arg)
         if(spscq_op_ok && ( !old_worker || (size_t) ureq >= old_worker->func_index ) )
         {
             printf("VIDispatcher: user give new irq req: %d\n", ureq);
-            dispatcher->executing_worker++;
-            assert(dispatcher->executing_worker < dispatcher->n_workers && "TODO: dynamic workers buffer");
-            new_worker = _get_active_worker(dispatcher);
+
+            new_worker = _prepare_new_worker(dispatcher, ureq);
             assert(new_worker);
-            new_worker->func_index = ureq;
 
             //stop main board, if it's running
-            if( dispatcher->main_f_status.working )
-            {
-                printf("VIDispatcher: suspending main thread\n");
-                _preempt_thread(&dispatcher->main_f_status.preemption_status);
-                dispatcher->main_f_status.working = false; 
-            }
+            _suspend_main_thread(&dispatcher->main_f_status);
 
             assert(!(dispatcher->executing_worker && dispatcher->main_f_status.working));
 
@@ -598,12 +590,46 @@ static void* _th_dispatcher(void* arg)
 
             //start new thread (i+1)
             printf("VIDispatcher: starting new worker: %zu\n", dispatcher->executing_worker);
-            atomic_store(&new_worker->working, true);
-            pthread_mutex_lock(&new_worker->data_mutex);
-            {
-                pthread_cond_signal(&new_worker->data_cond);
-            }
-            pthread_mutex_unlock(&new_worker->data_mutex);
+            _start_worker(new_worker);
+        }
+        //ELSE IF the ureq < req that is already executing THAN save it on a wait queue for later
+        else if ( spscq_op_ok )
+        {
+            bool minheap_push_ok = false;
+            printf("VIDispatcher: user request %d, has lower prority, saving on wait queue\n",
+                    ureq);
+
+            assert(ureq < old_worker->func_index);
+
+            minheap_push(&dispatcher->minheap_ureq, &ureq, &minheap_push_ok);
+            if ( !minheap_push_ok ) fprintf(stderr, "wait queue full, ureq lost");
+        }
+
+        //IF no worker is executing AND wait_queue is NOT empty THAN pop an ureq from wait queue
+        //and assign it to a worker WHICH IS ALWAYS WORKER 1.
+        if ( !dispatcher->executing_worker && !minheap_is_empty(&dispatcher->minheap_ureq))
+        {
+            bool pop_ok = false;
+
+            printf("VIDispatcher: no worker active popping from wait queue: %d\n", ureq);
+            minheap_pop(&dispatcher->minheap_ureq, &ureq, &pop_ok);
+
+            //pop MUST succeed since we just checked if the wait queue has elements in it 
+            assert(pop_ok);
+
+            new_worker = _prepare_new_worker(dispatcher, ureq);
+            assert(new_worker);
+
+            //stop main board, if it's running. It should not be needed but it cause no damage
+            //to be sure
+            _suspend_main_thread(&dispatcher->main_f_status);
+
+            assert( dispatcher->executing_worker == 1 && !dispatcher->main_f_status.working );
+
+            //start thread (1)
+            printf("VIDispatcher: starting new worker from wait queue. (Req: %d, Worker: %zu)\n",
+                    ureq, dispatcher->executing_worker);
+            _start_worker(new_worker);
         }
 
         assert(!(dispatcher->executing_worker && dispatcher->main_f_status.working));
@@ -628,6 +654,16 @@ static void* _th_dispatcher(void* arg)
 
 //====================================end==================================================
     return (void*) res;
+}
+
+static inline void _suspend_main_thread(struct VIMainFunStatus* const restrict main_thread)
+{
+    if( main_thread->working )
+    {
+        printf("vidispatcher: suspending main thread\n");
+        _preempt_thread(&main_thread->preemption_status);
+        main_thread->working = false; 
+    }
 }
 
 static inline int _init_preemption_status(VIPreemptionStatus* status)
@@ -678,6 +714,37 @@ static inline void _preemption_status_wait(VIPreemptionStatus* status)
         pthread_cond_wait(&status->cond, &status->mutex);
     }
     pthread_mutex_unlock(&status->mutex);
+}
+
+static inline void _start_worker(struct VIWorkerStatus* worker)
+{
+    atomic_store(&worker->working, true);
+    pthread_mutex_lock(&worker->data_mutex);
+    {
+        pthread_cond_signal(&worker->data_cond);
+    }
+    pthread_mutex_unlock(&worker->data_mutex);
+}
+
+static inline struct VIWorkerStatus* _prepare_new_worker(
+        VIDispatcher* const restrict d, const IrqLine func_index)
+{
+    struct VIWorkerStatus* worker = NULL;
+
+    assert(d);
+    d->executing_worker++;
+    assert(d->executing_worker < d->n_workers && "TODO: dynamic workers buffer");
+
+    worker = _get_active_worker(d);
+
+    if ( worker )
+    {
+        worker->func_index = func_index;
+        return worker;
+    }
+
+    return NULL;
+
 }
 
 static inline struct VIWorkerStatus* _get_active_worker(const VIDispatcher* const restrict d)

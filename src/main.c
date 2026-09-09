@@ -156,6 +156,8 @@ int main(int argc, char *argv[])
     printf("normal execution\n");
     usleep(3 * 1000 * 1000);
 
+    printf("triggering interrupt in ascencing priority\n");
+
     if ( (vi_err = vidispatcher_trigger_interrupt(&vi_dispatcher, 0)) )
     {
         GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
@@ -170,7 +172,24 @@ int main(int argc, char *argv[])
     }
 
     printf("normal execution\n");
-    usleep(6 * 1000 * 1000);
+    usleep(10 * 1000 * 1000);
+
+    printf("triggering interrupt in descencing priority\n");
+    if ( (vi_err = vidispatcher_trigger_interrupt(&vi_dispatcher, 1)) )
+    {
+        GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
+    }
+
+    printf("normal execution\n");
+    usleep(2 * 1000 * 1000);
+
+    if ( (vi_err = vidispatcher_trigger_interrupt(&vi_dispatcher, 0)) )
+    {
+        GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
+    }
+
+    printf("normal execution\n");
+    usleep(10 * 1000 * 1000);
 
     //========================================stopping thread=====================================
     printf("cancelling thread\n");

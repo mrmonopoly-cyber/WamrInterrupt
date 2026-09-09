@@ -11,7 +11,17 @@
 #include "wasm_export.h"
 #include "spscq/spscq.h"
 
+#ifndef SIG_PREEMPTION_WORKERS
 #define SIG_PREEMPTION_WORKERS SIGPOLL
+#endif
+
+#ifndef READY_QUEUE_CAP
+#define READY_QUEUE_CAP 32
+#endif
+
+#ifndef WAIT_QUEUE_CAP
+#define WAIT_QUEUE_CAP 32
+#endif
 
 typedef enum __VirtualInterruptError
 {
@@ -24,8 +34,8 @@ typedef enum __VirtualInterruptError
 
 typedef uint32_t IrqLine;
 typedef void (*IrqFuncHandler) (wasm_exec_env_t exec_env);
-typedef TEMPLATE_SPSCQ(IrqLine, 32) SPSCQ_UReq;
-typedef MINHEAP_TEMPLATE(IrqLine, 32) MinheapUReq;
+typedef TEMPLATE_SPSCQ(IrqLine, READY_QUEUE_CAP) SPSCQ_UReq;
+typedef MINHEAP_TEMPLATE(IrqLine, WAIT_QUEUE_CAP) MinheapUReq;
 
 typedef struct
 {
@@ -73,12 +83,7 @@ typedef struct __VirtualInterruptDispatcher
     pthread_mutex_t dispatcher_mutex;
 
     SPSCQ_UReq channel_ready_ureq;
-
-    struct 
-    {
-        SPSCQ_UReq channel_ureq;
-        MinheapUReq minheap_ureq;
-    }wait_queue;
+    MinheapUReq minheap_ureq;
 
     pthread_t dispatcher_tid;
     size_t executing_worker; //INFO: 0 means None, K means workers[k-1] IS CURRENTLY EXECUTING
