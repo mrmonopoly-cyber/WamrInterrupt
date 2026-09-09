@@ -7,3 +7,5 @@ nob.old
 compile_commands.json
 fake_board.aot
 spscq_tester
+fake_board.wasm
+wamrc

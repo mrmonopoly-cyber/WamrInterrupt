@@ -2,6 +2,9 @@
 #define DEFS_IMPLEMENTATION
 #include "BuildDependencies/defs.h"
 
+#define FAKE_BOARD_IMPLEMENTATION
+#include "BuildDependencies/fake_board.h"
+
 #define NOB_IMPLEMENTATION
 #include "BuildDependencies/nob.h"
 
@@ -156,6 +159,12 @@ static bool f_run(void)
     bool res = false;
     Cmd cmd = {0};
 
+    if ( !f_build_fakeboard(args.verbose, "./fake_board_src/main.c") )
+    {
+        nob_log(ERROR, "failed fake board");
+        return 1;
+    }
+
     cmd_append(&cmd, "./"O_FILE);
     cmd_append(&cmd, "./fake_board.aot");
 
@@ -168,7 +177,10 @@ static bool f_run(void)
 int main(int argc, char **argv)
 {
     GO_REBUILD_URSELF_PLUS(argc, argv,
-            "./BuildDependencies/defs.h");
+            "./BuildDependencies/fake_board.h",
+            "./BuildDependencies/c_cli.h",
+            "./BuildDependencies/defs.h"
+            );
 
     if ( !cli_parse(&args, argc, argv) )
     {
