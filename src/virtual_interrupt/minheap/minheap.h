@@ -11,7 +11,12 @@
 
 #define MINHEAP_TEMPLATE(T, CAP) struct {T data[(CAP)]; size_t len; }
 
-#define minheap_default {}
+#define MINHEAP_STATIC_INIT {}
+
+#define minheap_init(MINHEAP)                                                                   \
+    do{                                                                                         \
+        *(MINHEAP) = (__typeof__ (*MINHEAP)) {};                                                \
+    }while(0);
 
 #define minheap_push(MINHEAP, DATA, OUT_RES)                                                    \
     do{                                                                                         \
@@ -108,12 +113,14 @@ void minheap_test()
 {
     typedef MINHEAP_TEMPLATE(size_t, 12) MinheapChar;
 
-    MinheapChar minheap = minheap_default;
+    MinheapChar minheap;
     bool op_ok = false;
     size_t exp_temp =0;
     size_t temp =0;
 
     printf("running %s test\n", __func__);
+    
+    minheap_init(&minheap);
 
     minheap_pop(&minheap, &temp, &op_ok);
     printf("minheap pop: given: %zu, expected: %zu\n", temp, exp_temp);
