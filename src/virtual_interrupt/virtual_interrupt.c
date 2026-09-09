@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include "minheap/minheap.h"
+#define SPAN_IMPLEMENTATION
 #include "span/span.h"
 #include "spscq/spscq.h"
 #include "wasm_export.h"
@@ -17,7 +18,7 @@
 typedef struct
 {
     wasm_module_inst_t module_inst;
-    struct VIWorkerStatus* status;
+    VIWorkerStatus* status;
     int out;
 }ThWorkersArg;
 
@@ -47,13 +48,13 @@ static inline int _init_preemption_status(VIPreemptionStatus* status);
 static inline void _preemption_status_signal(VIPreemptionStatus* status);
 static inline void _preemption_status_wait(VIPreemptionStatus* status);
 
-static inline void _start_worker(struct VIWorkerStatus* worker);
-static inline struct VIWorkerStatus* _get_active_worker(const VIDispatcher* const restrict d);
-static inline struct VIWorkerStatus* _prepare_new_worker(
+static inline void _start_worker(VIWorkerStatus* worker);
+static inline VIWorkerStatus* _get_active_worker(const VIDispatcher* const restrict d);
+static inline VIWorkerStatus* _prepare_new_worker(
         VIDispatcher* const restrict d, const IrqLine func_index);
 
 static VIError _init_worker(
-        struct VIWorkerStatus* const restrict status,
+        VIWorkerStatus* const restrict status,
         const wasm_module_inst_t module_inst,
         IrqFuncHandler* funcs,
         VIDispatcherSignalStatus* signal_status);
@@ -72,7 +73,7 @@ VIError vidispatcher_init(
 {
     VIError res = VIError_None;
     struct VIMainFunStatus*  main_f_status;
-    struct VIWorkerStatus* workers = NULL;
+    SpanWorkerStatus workers = span_cfg_init(depth);
     IrqFuncHandler* funcs = NULL;
     size_t workers_ok=0;
     int err;
@@ -84,10 +85,9 @@ VIError vidispatcher_init(
     }
 
 //===================================--init memory==========================================
-    workers = malloc(depth * sizeof(*workers));
     funcs = malloc(n_lines * sizeof(*funcs));
 
-    if ( !workers || !funcs )
+    if ( !funcs )
     {
         res = VIError_Libc;
         VI_ERROR_ERRNO = errno;
@@ -181,9 +181,20 @@ VIError vidispatcher_init(
     }
 
 //======================================init workers==========================================
+    {
+        SpanError out_status; 
+        span_alloc_up_to(&workers, depth, &out_status);
+        assert(out_status == SpanError_None);
+    }
     for(size_t i=0; i<depth; i++)
     {
-        res = _init_worker(&workers[i], module_inst, funcs, &dispatcher->signal_status);
+        VIWorkerStatus* worker = NULL;
+        SpanError out_status; 
+
+        span_get(&workers, i, &worker, &out_status);
+        assert(out_status == SpanError_None && worker);
+
+        res = _init_worker(worker, module_inst, funcs, &dispatcher->signal_status);
 
         if ( res != VIError_None ) goto end;
 
@@ -191,11 +202,9 @@ VIError vidispatcher_init(
     }
 
 //=========================================assigning field to dispatcher=======================
-    dispatcher->n_workers = depth;
-    dispatcher->workers = workers;
-
     dispatcher->n_funcs = n_lines;
     dispatcher->funcs = funcs;
+    dispatcher->workers = workers;
 
     return res;
 
@@ -204,7 +213,11 @@ end:
     assert(res != VIError_None);
     for(size_t i=0; i<workers_ok; i++)
     {
-        struct VIWorkerStatus *worker = &dispatcher->workers[i];
+        VIWorkerStatus* worker = NULL;
+        SpanError out_status; 
+
+        span_get(&dispatcher->workers, i, &worker, &out_status);
+        assert(out_status == SpanError_None && worker);
 
         pthread_cancel(worker->preemption_status.tid);
         pthread_join(worker->preemption_status.tid, NULL);
@@ -218,7 +231,7 @@ end:
 
     pthread_mutex_destroy(&dispatcher->signal_status.mutex);
     pthread_cond_destroy(&dispatcher->signal_status.cond);
-    if (workers) free(workers);
+    span_destroy(&dispatcher->workers);
     if (funcs) free(funcs);
     return res;
 }
@@ -278,9 +291,13 @@ void vidispatcher_destroy(VIDispatcher* const restrict dispatcher)
         pthread_cancel(dispatcher->dispatcher_tid);
         pthread_join(dispatcher->dispatcher_tid, NULL);
 
-        for(size_t i=0; i<dispatcher->n_workers; i++)
+        for(size_t i=0; i< span_len(&dispatcher->workers); i++)
         {
-            struct VIWorkerStatus *worker = &dispatcher->workers[i];
+            VIWorkerStatus* worker = NULL;
+            SpanError out_status; 
+
+            span_get(&dispatcher->workers, i, &worker, &out_status);
+            assert(out_status == SpanError_None && worker);
 
             pthread_cancel(worker->preemption_status.tid);
             pthread_join(worker->preemption_status.tid, NULL);
@@ -294,7 +311,7 @@ void vidispatcher_destroy(VIDispatcher* const restrict dispatcher)
 
         pthread_mutex_destroy(&dispatcher->signal_status.mutex);
         pthread_cond_destroy(&dispatcher->signal_status.cond);
-        if ( dispatcher->workers ) free(dispatcher->workers);
+        span_destroy(&dispatcher->workers);
         if ( dispatcher->funcs ) free(dispatcher->funcs);
         
         *dispatcher = (VIDispatcher) {};
@@ -368,7 +385,7 @@ static void* _th_irq_worker(void* arg)
     uintptr_t res = VIError_None;
     ThWorkersArg* th_arg = arg;
 
-    struct VIWorkerStatus* status = th_arg->status;
+    VIWorkerStatus* status = th_arg->status;
     wasm_module_inst_t module_inst = th_arg->module_inst;
     wasm_exec_env_t th_exec_env = {};
     sigset_t set = {};
@@ -448,7 +465,7 @@ static void* _th_dispatcher(void* arg)
     uintptr_t res = VIError_None;
     VIDispatcher* dispatcher = arg;
     IrqLine ureq;
-    struct VIWorkerStatus* old_worker, *new_worker;
+    VIWorkerStatus* old_worker, *new_worker;
     SPSCQ_UReq* c_ureq = &dispatcher->channel_ready_ureq;
     bool spscq_op_ok = false;
 
@@ -597,7 +614,7 @@ static void* _th_dispatcher(void* arg)
 }
 
 static VIError _init_worker(
-        struct VIWorkerStatus* const restrict status,
+        VIWorkerStatus* const restrict status,
         const wasm_module_inst_t module_inst,
         IrqFuncHandler* funcs,
         VIDispatcherSignalStatus* signal_status)
@@ -710,7 +727,7 @@ static inline void _preemption_status_wait(VIPreemptionStatus* status)
     pthread_mutex_unlock(&status->mutex);
 }
 
-static inline void _start_worker(struct VIWorkerStatus* worker)
+static inline void _start_worker(VIWorkerStatus* worker)
 {
     atomic_store(&worker->working, true);
     pthread_mutex_lock(&worker->data_mutex);
@@ -720,14 +737,14 @@ static inline void _start_worker(struct VIWorkerStatus* worker)
     pthread_mutex_unlock(&worker->data_mutex);
 }
 
-static inline struct VIWorkerStatus* _prepare_new_worker(
+static inline VIWorkerStatus* _prepare_new_worker(
         VIDispatcher* const restrict d, const IrqLine func_index)
 {
-    struct VIWorkerStatus* worker = NULL;
+    VIWorkerStatus* worker = NULL;
 
     assert(d);
     d->executing_worker++;
-    assert(d->executing_worker < d->n_workers && "TODO: dynamic workers buffer");
+    assert(d->executing_worker < span_len(&d->workers) && "TODO: dynamic workers buffer");
 
     worker = _get_active_worker(d);
 
@@ -741,14 +758,17 @@ static inline struct VIWorkerStatus* _prepare_new_worker(
 
 }
 
-static inline struct VIWorkerStatus* _get_active_worker(const VIDispatcher* const restrict d)
+static inline VIWorkerStatus* _get_active_worker(const VIDispatcher* const restrict d)
 {
-    struct VIWorkerStatus* res = NULL;
+    VIWorkerStatus* res = NULL;
+    SpanError span_res;
     assert(d);
 
-    if ( d->executing_worker > 0 && d->executing_worker <= d->n_workers )
+    if ( d->executing_worker > 0 && d->executing_worker <= span_len(&d->workers) )
     {
-        res = &d->workers[d->executing_worker - 1];
+        span_get(&d->workers, d->executing_worker - 1, &res, &span_res);
+
+        assert( span_res == SpanError_None );
     }
 
     return res;

@@ -1,5 +1,3 @@
-#pragma once
-
 #include <assert.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -13,6 +11,8 @@
 #define SPAN_CHUNK_SIZE 8
 #endif // !SPAN_CHUNK_SIZE
 
+#ifndef SPAN_TYPES
+#define SPAN_TYPES
 typedef enum
 {
     SpanError_None=0,
@@ -21,6 +21,16 @@ typedef enum
     SpanError_OutOfBounds
 } SpanError;
 
+struct __SpanCommon
+{
+    void** chunks;
+    size_t chunk_size;
+    size_t curr_chunk;
+    size_t cap;
+    size_t len;
+};
+#endif // !SPAN_TYPES
+
 #define SPAN_TEMPLATE(T)                                                        \
     struct{                                                                     \
         struct __SpanCommon common;                                             \
@@ -28,6 +38,16 @@ typedef enum
     }
 
 #define span_cfg_init(CHUNK_SIZE) {{NULL, (CHUNK_SIZE), 0, 0, 0}, NULL}
+
+#define span_alloc_up_to(SPAN, I, OUT_STATUS)                                   \
+    do{                                                                         \
+        __typeof__(*(SPAN))* _s = (SPAN);                                       \
+        *(OUT_STATUS) = __span_alloc_up_to(                                     \
+                &_s->common,                                                    \
+                (I),                                                            \
+                sizeof(*_s->_data_type));                                       \
+    }while(0)
+
 
 #define span_write(SPAN, I, DATA, OUT_STATUS)                                   \
     do{                                                                         \
@@ -41,17 +61,20 @@ typedef enum
                 sizeof(*_s->_data_type));                                       \
     }while(0)
 
-#define span_read(SPAN, I, OUT_DATA, OUT_STATUS)                                \
+#define span_get(SPAN, I, OUT_DATA, OUT_STATUS)                                 \
     do{                                                                         \
         __typeof__(*(SPAN))* _s = (SPAN);                                       \
         __typeof__(*(OUT_DATA))* _out = (OUT_DATA);                             \
-        SPAN_ASSERT_TYPES(__typeof__(*_s->_data_type), __typeof__(*_out));      \
-        *(OUT_STATUS) = __span_read(                                            \
+        SPAN_ASSERT_TYPES(__typeof__(*_s->_data_type), __typeof__(**_out));     \
+        *(OUT_STATUS) = __span_get(                                             \
                 &_s->common,                                                    \
                 (I),                                                            \
-                (void*) (_out),                                                 \
+                (void**) (_out),                                                \
                 sizeof(*_s->_data_type));                                       \
     }while(0)
+
+#define span_len(SPAN) ( (SPAN)->common.len )
+
 
 #define span_destroy(SPAN)                                                      \
     do{                                                                         \
@@ -59,34 +82,72 @@ typedef enum
         __span_destroy(&_s->common, sizeof(*_s->_data_type));                   \
     }while(0)
 
+SpanError __span_alloc_up_to(
+        struct __SpanCommon* span,
+        const size_t i,
+        const size_t ele_size);
 
-struct __SpanCommon
-{
-    void** chunks;
-    size_t chunk_size;
-    size_t curr_chunk;
-    size_t cap;
-    size_t len;
-};
-
-
-static SpanError __span_write(
+SpanError __span_write(
         struct __SpanCommon* span,
         const size_t i,
         const void* data,
         const size_t ele_size);
 
-static SpanError __span_read(
+SpanError __span_get(
         const struct __SpanCommon* const restrict span,
         const size_t i,
-        void* out,
+        void** out,
         const size_t ele_size);
 
-static void __span_destroy(const struct __SpanCommon* const restrict span, const size_t ele_size);
+void __span_destroy(const struct __SpanCommon* const restrict span, const size_t ele_size);
 
 //============================================implementation===================================
 
-static SpanError __span_write(
+#ifdef SPAN_IMPLEMENTATION
+
+SpanError __span_alloc_up_to(
+        struct __SpanCommon* span,
+        const size_t i,
+        const size_t ele_size)
+{
+    assert(ele_size);
+    if(!span || !ele_size ) return SpanError_InvalidInput;
+
+    if (!span->chunk_size) span->chunk_size = SPAN_CHUNK_SIZE;
+
+    const size_t chunk_index = i / span->chunk_size;
+
+    if (chunk_index >= span->cap) 
+    {
+        const size_t new_cap = chunk_index + 1;
+
+        void** new_chunks = (void**) realloc(span->chunks, new_cap * sizeof(*new_chunks));
+        if (!new_chunks) return SpanError_Libc;
+
+        for (size_t c = span->cap; c < new_cap; c++)
+        {
+            new_chunks[c] = calloc(span->chunk_size, ele_size);
+            if ( !new_chunks[c] )
+            {
+                span->chunks = new_chunks;
+                span->cap = c;
+                return SpanError_Libc; 
+            }
+        }
+        
+        span->chunks = new_chunks;
+        span->cap = new_cap;
+    }
+
+    if (i >= span->len)
+    {
+        span->len = i + 1;
+    }
+
+    return SpanError_None;
+}
+
+SpanError __span_write(
         struct __SpanCommon* span, const size_t i, const void* data, const size_t ele_size)
 {
     assert(ele_size);
@@ -106,7 +167,7 @@ static SpanError __span_write(
 
         for (size_t c = span->cap; c < new_cap; c++)
         {
-            new_chunks[c] = malloc(span->chunk_size * ele_size);
+            new_chunks[c] = calloc(span->chunk_size, ele_size);
             if ( !new_chunks[c] )
             {
                 span->chunks = new_chunks;
@@ -130,9 +191,9 @@ static SpanError __span_write(
     return SpanError_None;
 }
 
-static SpanError __span_read(
+SpanError __span_get(
         const struct __SpanCommon* const restrict span,
-        const size_t i, void* out, const size_t ele_size)
+        const size_t i, void** out, const size_t ele_size)
 {
     assert(ele_size);
     if(!span || !out ) return SpanError_InvalidInput;
@@ -142,12 +203,12 @@ static SpanError __span_read(
     const size_t chunk_offset = i % span->chunk_size;
 
     uint8_t* target_chunk = (uint8_t*)span->chunks[chunk_index];
-    memcpy(out, target_chunk + (chunk_offset * ele_size), ele_size);
+    *out = target_chunk + (chunk_offset * ele_size);
 
     return SpanError_None;
 }
 
-static void __span_destroy(const struct __SpanCommon* const restrict span, const size_t ele_size)
+void __span_destroy(const struct __SpanCommon* const restrict span, const size_t ele_size)
 {
     assert(ele_size);
 
@@ -159,10 +220,12 @@ static void __span_destroy(const struct __SpanCommon* const restrict span, const
     }
 }
 
+#endif // SPAN_IMPLEMENTATION
 
 //===========================================tests=============================================
 
-#ifdef ENABLE_TESTS
+#if defined(ENABLE_TESTS) && !defined(SPAN_TESTS)
+#define SPAN_TESTS
 #include <stdio.h>
 #include <stdint.h>
 
@@ -175,7 +238,7 @@ void test_span()
 
     SpanUintPtr span = span_cfg_init(11);
     SpanError err = SpanError_None;
-    uintptr_t data;
+    uintptr_t* data;
 
     for(uintptr_t i = 0; i < 30; i++)
     {
@@ -185,9 +248,9 @@ void test_span()
 
     for(size_t i = 0; i < 30; i++)
     {
-        span_read(&span, i, &data, &err);
-        printf("get span_status: %d, expected: %zu, got: %zu\n", err, i, data);
-        assert(err == SpanError_None && data == (uintptr_t) i);
+        span_get(&span, i, &data, &err);
+        printf("get span_status: %d, expected: %zu, got: %zu\n", err, i, *data);
+        assert(err == SpanError_None && *data == (uintptr_t) i);
     }
 
     span_destroy(&span);

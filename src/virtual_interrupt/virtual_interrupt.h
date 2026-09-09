@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "minheap/minheap.h"
+#include "span/span.h"
 #include "wasm_export.h"
 #include "spscq/spscq.h"
 
@@ -50,6 +51,24 @@ typedef struct
     pthread_mutex_t mutex;
 }VIDispatcherSignalStatus;
 
+typedef struct
+{
+    pthread_cond_t data_cond;
+
+    pthread_mutex_t data_mutex;
+
+    VIPreemptionStatus preemption_status;
+
+    size_t func_index;
+    atomic_bool working;
+
+    VIDispatcherSignalStatus* p_dispatcher_signal_status;
+
+    IrqFuncHandler* p_funcs;
+}VIWorkerStatus;
+
+typedef SPAN_TEMPLATE(VIWorkerStatus) SpanWorkerStatus;
+
 typedef struct __VirtualInterruptDispatcher
 {
     struct VIMainFunStatus
@@ -60,21 +79,7 @@ typedef struct __VirtualInterruptDispatcher
 
     }main_f_status;
 
-    struct VIWorkerStatus
-    {
-        pthread_cond_t data_cond;
-        pthread_mutex_t data_mutex;
-
-        VIPreemptionStatus preemption_status;
-
-        size_t func_index;
-        atomic_bool working;
-
-        VIDispatcherSignalStatus* p_dispatcher_signal_status;
-
-        IrqFuncHandler* p_funcs;
-    }*workers;
-    size_t n_workers;
+    SpanWorkerStatus workers;
 
     IrqFuncHandler* funcs;
     size_t n_funcs;
