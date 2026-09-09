@@ -93,9 +93,11 @@
     )
 
 
-#ifdef SPSCQ_TEST
+#ifdef ENABLE_TESTS
 #include <stdio.h>
 
+
+__attribute__((__constructor__))
 void spscq_test()
 {
     typedef TEMPLATE_SPSCQ(uint8_t, 4) SPSCQ_Test;
@@ -106,26 +108,28 @@ void spscq_test()
     const uint8_t data_push[SPSCQ_EXTRACT_CAP(&sd)] = {21, 42};
     uint8_t data_pop[SPSCQ_EXTRACT_CAP(&sd)] = {};
 
+    printf("running test: %s\n", __func__);
+
     spscq_init(&sd);
 
-    spscq_peak_last_pushed(&sd, &pred, &op_ok);
+    spscq_peek_last_pushed(&sd, &pred, &op_ok);
     assert(pred == 0 && !op_ok);
     spscq_push(&sd, data_push[0], &op_ok);
-    spscq_peak_last_pushed(&sd, &pred, &op_ok);
+    spscq_peek_last_pushed(&sd, &pred, &op_ok);
     assert(pred == data_push[0] && op_ok);
     assert(op_ok);
 
     spscq_push(&sd, data_push[1], &op_ok);
-    spscq_peak_last_pushed(&sd, &pred, &op_ok);
+    spscq_peek_last_pushed(&sd, &pred, &op_ok);
     assert(pred == data_push[1] && op_ok);
     assert(op_ok);
 
 
     spscq_pop(&sd, &data_pop[0], &op_ok);
-    spscq_peak_last_pushed(&sd, &pred, &op_ok);
+    spscq_peek_last_pushed(&sd, &pred, &op_ok);
     assert(pred == data_push[1] && op_ok);
     spscq_pop(&sd, &data_pop[1], &op_ok);
-    spscq_peak_last_pushed(&sd, &pred, &op_ok);
+    spscq_peek_last_pushed(&sd, &pred, &op_ok);
     assert(pred == data_push[1] && !op_ok);
     
     printf("queue: cap: %lu, data[0]: %d, data[1]: %d\n",
@@ -137,12 +141,6 @@ void spscq_test()
     {
         assert(data_push[i] == data_pop[i] );
     }
-}
-
-int main()
-{
-    spscq_test();
-    return 0;
 }
 
 #endif

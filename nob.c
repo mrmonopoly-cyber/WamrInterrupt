@@ -5,6 +5,18 @@
 #define NOB_IMPLEMENTATION
 #include "BuildDependencies/nob.h"
 
+#include "BuildDependencies/c_cli.h"
+
+typedef struct CCliUserArgs{
+    bool help;
+    bool verbose;
+    bool test;
+}CliArgs;
+
+static CliArgs args;
+
+static inline bool cli_parse(CliArgs* args, const int argc, char** argv);
+
 static bool f_build_wamr(void)
 {
     static char wamr_root_dir[128] = {0};
@@ -80,9 +92,19 @@ static bool f_compile(Walk_Entry entry)
         Cmd cmd = {0};
         const char* file_name = nob_temp_file_name(entry.path);
 
+        if ( args.test && !strcmp(file_name, "main.c" ))
+        {
+            entry.path = "./BuildDependencies/dummy_main.c";
+        }
+
         cmd_append(&cmd, CC);
 
         apply_all_defualt_compile_opts(&cmd);
+
+        if ( args.test )
+        {
+            cmd_append(&cmd, "-DENABLE_TESTS");
+        }
 
         cmd_append(&cmd, "-c");
         cmd_append(&cmd, "-o", temp_sprintf("%s/%.*s.o", BUILD_DIR, (int) strlen(file_name)-2, file_name));
@@ -129,25 +151,6 @@ static bool f_link(void)
     return res;
 }
 
-static void f_test()
-{
-    Cmd cmd = {0};
-    // cat src/virtual_interrupt/spscq/spscq.h | gcc -DSPSCQ_TEST -x c - -o test_sda
-
-    cmd_append(&cmd, "gcc");
-    cmd_append(&cmd, "-x", "c");
-    cmd_append(&cmd, "./src/virtual_interrupt/spscq/spscq.h");
-    cmd_append(&cmd, "-DSPSCQ_TEST");
-    cmd_append(&cmd, "-o", "spscq_tester");
-
-    cmd_run(&cmd);
-
-    cmd_append(&cmd, "./spscq_tester");
-    cmd_run(&cmd);
-
-    cmd_free(cmd);
-}
-
 static bool f_run(void)
 {
     bool res = false;
@@ -167,18 +170,15 @@ int main(int argc, char **argv)
     GO_REBUILD_URSELF_PLUS(argc, argv,
             "./BuildDependencies/defs.h");
 
-    nob_log(INFO, "build directory: %s\n", BUILD_DIR);
-    nob_log(INFO, "output file: %s\n", O_FILE);
+    if ( !cli_parse(&args, argc, argv) )
+    {
+        return 1;
+    }
+
+    nob_log(INFO, "build directory: %s", BUILD_DIR);
+    nob_log(INFO, "output file: %s", O_FILE);
 
     mkdir_if_not_exists(BUILD_DIR);
-
-    bool test = false;
-
-    if(test)
-    {
-        f_test();
-        return 0;
-    }
 
     //wamr
     if(!f_build_wamr())
@@ -192,7 +192,7 @@ int main(int argc, char **argv)
     {
         if(dir)
         {
-            printf("compiling sources in src: %s\n", dir);
+            nob_log(INFO, "compiling sources in src: %s", dir);
             if(!walk_dir(dir, f_compile))
             {
                 nob_log(ERROR, "failed compiling sources in %s", dir);
@@ -215,4 +215,38 @@ int main(int argc, char **argv)
 
 
   return 0;
+}
+
+
+#define CCLI_IMPLEMENTATION
+#include "BuildDependencies/c_cli.h"
+
+CCLI_PARSER_DECLARE(test);
+
+static const CCliArgDef defs[] = 
+{
+    //--test, -t
+    {
+        .f_long = CCLI_LONG_FLAG(test),
+        .f_short = CCLI_SHORT_FLAG(t),
+        .f_args = CCLI_NO_ARG,
+        .f_description = "run the tests",
+        .f_parser = CCLI_PARSER_NAME(test),
+    },
+};
+
+static void cli_default(CliArgs* const restrict args)
+{
+    args->test = false;
+}
+
+static inline bool cli_parse(CliArgs* args, const int argc, char** argv)
+{
+    return c_cli_parse(defs, CCLI_ARRAYSIZE(defs), args, argc, argv, cli_default);
+}
+
+CCLI_PARSER_DECLARE_FULL(test, args, ctx)
+{
+    args->test = true;
+    return CCliActionOK;
 }
