@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include "minheap/minheap.h"
+#include "span/span.h"
 #include "spscq/spscq.h"
 #include "wasm_export.h"
 

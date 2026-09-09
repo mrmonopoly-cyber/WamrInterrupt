@@ -1,0 +1,195 @@
+#pragma once
+
+#include <assert.h>
+#include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+
+#define SPAN_ASSERT_TYPES(T1, T2) \
+    static_assert(__builtin_types_compatible_p(T1, T2), "invalid types")
+
+#ifndef SPAN_CHUNK_SIZE
+#define SPAN_CHUNK_SIZE 8
+#endif // !SPAN_CHUNK_SIZE
+
+typedef enum
+{
+    SpanError_None=0,
+    SpanError_Libc,
+    SpanError_InvalidInput,
+    SpanError_OutOfBounds
+} SpanError;
+
+#define SPAN_TEMPLATE(T)                                                        \
+    struct{                                                                     \
+        struct __SpanCommon common;                                             \
+        const T* _data_type;                                                    \
+    }
+
+#define span_cfg_init(CHUNK_SIZE) {{NULL, (CHUNK_SIZE), 0, 0, 0}, NULL}
+
+#define span_write(SPAN, I, DATA, OUT_STATUS)                                   \
+    do{                                                                         \
+        __typeof__(*(SPAN))* _s = (SPAN);                                       \
+        __typeof__(*(DATA))* _d = (DATA);                                       \
+        SPAN_ASSERT_TYPES(__typeof__(*_s->_data_type), __typeof__(*_d));        \
+        *(OUT_STATUS) = __span_write(                                           \
+                &_s->common,                                                    \
+                (I),                                                            \
+                (const void*) (_d),                                             \
+                sizeof(*_s->_data_type));                                       \
+    }while(0)
+
+#define span_read(SPAN, I, OUT_DATA, OUT_STATUS)                                \
+    do{                                                                         \
+        __typeof__(*(SPAN))* _s = (SPAN);                                       \
+        __typeof__(*(OUT_DATA))* _out = (OUT_DATA);                             \
+        SPAN_ASSERT_TYPES(__typeof__(*_s->_data_type), __typeof__(*_out));      \
+        *(OUT_STATUS) = __span_read(                                            \
+                &_s->common,                                                    \
+                (I),                                                            \
+                (void*) (_out),                                                 \
+                sizeof(*_s->_data_type));                                       \
+    }while(0)
+
+#define span_destroy(SPAN)                                                      \
+    do{                                                                         \
+        __typeof__(*(SPAN))* _s = (SPAN);                                       \
+        __span_destroy(&_s->common, sizeof(*_s->_data_type));                   \
+    }while(0)
+
+
+struct __SpanCommon
+{
+    void** chunks;
+    size_t chunk_size;
+    size_t curr_chunk;
+    size_t cap;
+    size_t len;
+};
+
+
+static SpanError __span_write(
+        struct __SpanCommon* span,
+        const size_t i,
+        const void* data,
+        const size_t ele_size);
+
+static SpanError __span_read(
+        const struct __SpanCommon* const restrict span,
+        const size_t i,
+        void* out,
+        const size_t ele_size);
+
+static void __span_destroy(const struct __SpanCommon* const restrict span, const size_t ele_size);
+
+//============================================implementation===================================
+
+static SpanError __span_write(
+        struct __SpanCommon* span, const size_t i, const void* data, const size_t ele_size)
+{
+    assert(ele_size);
+    if(!span || !data) return SpanError_InvalidInput;
+
+    if (!span->chunk_size) span->chunk_size = SPAN_CHUNK_SIZE;
+
+    const size_t chunk_index = i / span->chunk_size;
+    const size_t chunk_offset = i % span->chunk_size;
+
+    if (chunk_index >= span->cap) 
+    {
+        const size_t new_cap = chunk_index + 1;
+
+        void** new_chunks = (void**) realloc(span->chunks, new_cap * sizeof(*new_chunks));
+        if (!new_chunks) return SpanError_Libc;
+
+        for (size_t c = span->cap; c < new_cap; c++)
+        {
+            new_chunks[c] = malloc(span->chunk_size * ele_size);
+            if ( !new_chunks[c] )
+            {
+                span->chunks = new_chunks;
+                span->cap = c;
+                return SpanError_Libc; 
+            }
+        }
+        
+        span->chunks = new_chunks;
+        span->cap = new_cap;
+    }
+
+    if (i >= span->len)
+    {
+        span->len = i + 1;
+    }
+
+    uint8_t* target_chunk = (uint8_t*)span->chunks[chunk_index];
+    memcpy(target_chunk + (chunk_offset * ele_size), data, ele_size);
+
+    return SpanError_None;
+}
+
+static SpanError __span_read(
+        const struct __SpanCommon* const restrict span,
+        const size_t i, void* out, const size_t ele_size)
+{
+    assert(ele_size);
+    if(!span || !out ) return SpanError_InvalidInput;
+    if(i >= span->len || !span->chunk_size ) return SpanError_OutOfBounds;
+
+    const size_t chunk_index = i / span->chunk_size;
+    const size_t chunk_offset = i % span->chunk_size;
+
+    uint8_t* target_chunk = (uint8_t*)span->chunks[chunk_index];
+    memcpy(out, target_chunk + (chunk_offset * ele_size), ele_size);
+
+    return SpanError_None;
+}
+
+static void __span_destroy(const struct __SpanCommon* const restrict span, const size_t ele_size)
+{
+    assert(ele_size);
+
+    if(!span) return;
+
+    for (size_t i=0; i< span->curr_chunk; i++)
+    {
+        free(span->chunks[i]);
+    }
+}
+
+
+//===========================================tests=============================================
+
+#ifdef ENABLE_TESTS
+#include <stdio.h>
+#include <stdint.h>
+
+__attribute__((__constructor__))
+void test_span()
+{
+    typedef SPAN_TEMPLATE(uintptr_t) SpanUintPtr;
+
+    printf("running %s test\n", __func__);
+
+    SpanUintPtr span = span_cfg_init(11);
+    SpanError err = SpanError_None;
+    uintptr_t data;
+
+    for(uintptr_t i = 0; i < 30; i++)
+    {
+        span_write(&span, i, &i, &err);
+        assert(err == SpanError_None);
+    }
+
+    for(size_t i = 0; i < 30; i++)
+    {
+        span_read(&span, i, &data, &err);
+        printf("get span_status: %d, expected: %zu, got: %zu\n", err, i, data);
+        assert(err == SpanError_None && data == (uintptr_t) i);
+    }
+
+    span_destroy(&span);
+}
+#endif
