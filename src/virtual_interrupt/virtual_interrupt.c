@@ -27,7 +27,7 @@ typedef struct
     wasm_module_inst_t module_inst;
     struct VIMainFunStatus* status;
     wasm_function_inst_t main_f;
-    int out;
+    int* out;
 }ThMainThreadArg;
 
 static void* _th_main_thread(void* arg);
@@ -151,10 +151,11 @@ VIError vidispatcher_init(
     main_f_status->p_dispatcher_signal_status = &dispatcher->signal_status;
 
     {
+        int out = -1;
         ThMainThreadArg arg = {
             .module_inst = module_inst,
             .status = main_f_status,
-            .out = -1,
+            .out = &out,
             .main_f = main_f,
         };
 
@@ -171,9 +172,9 @@ VIError vidispatcher_init(
         }
 
         //spinlock
-        while(arg.out == -1);
+        while(out == -1);
 
-        if (arg.out != VIError_None)
+        if (out != VIError_None)
         {
             res = VIError_WAMR;
             goto end;
@@ -329,9 +330,9 @@ static void _th_irq_worker_cleanup(void* arg)
 static void* _th_main_thread(void* arg)
 {
     uintptr_t res = VIError_None;
-    ThMainThreadArg* th_arg = arg;
+    ThMainThreadArg th_arg = *(ThMainThreadArg*) arg;
 
-    wasm_module_inst_t module_inst = th_arg->module_inst;
+    wasm_module_inst_t module_inst = th_arg.module_inst;
     wasm_exec_env_t th_exec_env = {};
     sigset_t set = {};
     int err;
@@ -362,18 +363,18 @@ static void* _th_main_thread(void* arg)
         VI_ERROR_ERRNO = errno;
         goto end;
     }
-    th_arg->out = VIError_None;
+    *th_arg.out = VIError_None;
 
 //=======================================logic=================================================
-    th_arg->status->working = true;
-    if ( wasm_runtime_call_wasm(th_exec_env, th_arg->main_f, 0, NULL) )
+    th_arg.status->working = true;
+    if ( wasm_runtime_call_wasm(th_exec_env, th_arg.main_f, 0, NULL) )
     {
         VI_ERROR_WAMR_EXCEPTION = wasm_runtime_get_exception(module_inst);
     }
 
     //INFO: if we reach here it means that the main has ended for any reason which is probably
     //an error unless the hole program ended
-    _dispatcher_signal(th_arg->status->p_dispatcher_signal_status);
+    _dispatcher_signal(th_arg.status->p_dispatcher_signal_status);
 
 //=======================================end==================================================
 end:
