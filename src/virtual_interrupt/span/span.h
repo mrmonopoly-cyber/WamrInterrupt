@@ -25,7 +25,6 @@ struct __SpanCommon
 {
     void** chunks;
     size_t chunk_size;
-    size_t curr_chunk;
     size_t cap;
     size_t len;
 };
@@ -37,7 +36,7 @@ struct __SpanCommon
         const T* _data_type;                                                    \
     }
 
-#define span_cfg_init(CHUNK_SIZE) {{NULL, (CHUNK_SIZE), 0, 0, 0}, NULL}
+#define span_cfg_init(CHUNK_SIZE) {{NULL, (CHUNK_SIZE), 0, 0}, NULL}
 
 #define span_resize(SPAN, I, OUT_STATUS)                                        \
     do{                                                                         \
@@ -76,11 +75,7 @@ struct __SpanCommon
 #define span_len(SPAN) ( (SPAN)->common.len )
 
 
-#define span_destroy(SPAN)                                                      \
-    do{                                                                         \
-        __typeof__(*(SPAN))* _s = (SPAN);                                       \
-        __span_destroy(&_s->common, sizeof(*_s->_data_type));                   \
-    }while(0)
+#define span_destroy(SPAN) __span_destroy(&(SPAN)->common)
 
 SpanError __span_resize(
         struct __SpanCommon* span,
@@ -99,7 +94,7 @@ SpanError __span_get(
         void** out,
         const size_t ele_size);
 
-void __span_destroy(const struct __SpanCommon* const restrict span, const size_t ele_size);
+void __span_destroy(const struct __SpanCommon* const restrict span);
 
 //============================================implementation===================================
 
@@ -117,7 +112,7 @@ SpanError __span_resize(
 
     const size_t chunk_index = i / span->chunk_size;
 
-    if (chunk_index >= span->cap) 
+    if (chunk_index > span->cap) 
     {
         const size_t new_cap = chunk_index + 1;
 
@@ -134,7 +129,7 @@ SpanError __span_resize(
                 return SpanError_Libc; 
             }
         }
-        
+
         span->chunks = new_chunks;
         span->cap = new_cap;
     }
@@ -185,16 +180,18 @@ SpanError __span_get(
     return SpanError_None;
 }
 
-void __span_destroy(const struct __SpanCommon* const restrict span, const size_t ele_size)
+void __span_destroy(const struct __SpanCommon* const restrict span)
 {
-    assert(ele_size);
+    if( !span || !span->chunks ) return;
 
-    if(!span) return;
-
-    for (size_t i=0; i< span->curr_chunk; i++)
+    for (size_t i=0; i< span->cap; i++)
     {
-        free(span->chunks[i]);
+        printf("span free chunk: %zu\n", i);
+        if( span->chunks[i] ) free(span->chunks[i]);
     }
+
+    printf("span free chunk root\n");
+    free(span->chunks);
 }
 
 #endif // SPAN_IMPLEMENTATION
