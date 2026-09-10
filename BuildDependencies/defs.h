@@ -136,6 +136,7 @@ ArrayViewString default_compiler_opts(void)
         "-Wall",
         "-Wextra",
         "-ggdb",
+        "-fsanitize=address,undefined",
         //add here your compiler options: -c, -ggdb, -O2, ...
     };
 
@@ -150,6 +151,7 @@ ArrayViewString default_linker_opts(void)
         "-lvmlib",
         "-lm",
         "-ggdb",
+        "-fsanitize=address,undefined",
         //add here your compiler options: -lm, -lgdb, ...
     };
 
