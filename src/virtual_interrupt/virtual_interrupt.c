@@ -41,6 +41,8 @@ static inline void _suspend_main_thread(struct VIMainFunStatus* const restrict m
 
 static inline void _preempt_thread(VIPreemptionStatus* const restrict main_f);
 static inline void _resume_thread_preemption(VIPreemptionStatus* const restrict status);
+static inline void _destroy_preemption_status(VIPreemptionStatus* const restrict status);
+static inline void _destroy_signal_status(VIDispatcherSignalStatus* const restrict status);
 
 static inline void _dispatcher_signal(VIDispatcherSignalStatus* status);
 
@@ -217,18 +219,14 @@ end:
         VIWorkerStatus* worker = _get_worker(dispatcher, i);
         assert( worker );
 
-        pthread_cancel(worker->preemption_status.tid);
-        pthread_join(worker->preemption_status.tid, NULL);
+        _destroy_preemption_status(&worker->preemption_status);
 
         pthread_mutex_destroy(&worker->data_mutex);
         pthread_cond_destroy(&worker->data_cond);
-
-        pthread_mutex_destroy(&worker->preemption_status.mutex);
-        pthread_cond_destroy(&worker->preemption_status.cond);
     }
 
-    pthread_mutex_destroy(&dispatcher->signal_status.mutex);
-    pthread_cond_destroy(&dispatcher->signal_status.cond);
+    _destroy_signal_status(&dispatcher->signal_status);
+
     span_destroy(&dispatcher->workers);
     if (funcs) free(funcs);
     return res;
@@ -295,18 +293,14 @@ void vidispatcher_destroy(VIDispatcher* const restrict dispatcher)
 
             assert( worker );
 
-            pthread_cancel(worker->preemption_status.tid);
-            pthread_join(worker->preemption_status.tid, NULL);
+            _destroy_preemption_status(&worker->preemption_status);
 
             pthread_mutex_destroy(&worker->data_mutex);
             pthread_cond_destroy(&worker->data_cond);
-
-            pthread_mutex_destroy(&worker->preemption_status.mutex);
-            pthread_cond_destroy(&worker->preemption_status.cond);
         }
 
-        pthread_mutex_destroy(&dispatcher->signal_status.mutex);
-        pthread_cond_destroy(&dispatcher->signal_status.cond);
+        _destroy_signal_status(&dispatcher->signal_status);
+
         span_destroy(&dispatcher->workers);
         if ( dispatcher->funcs ) free(dispatcher->funcs);
         
@@ -810,6 +804,22 @@ static inline void _resume_thread_preemption(VIPreemptionStatus* const restrict 
 {
     assert(status);
     _preemption_status_signal(status);
+}
+
+static inline void _destroy_preemption_status(VIPreemptionStatus* const restrict status)
+{
+    assert(status);
+    pthread_cancel(status->tid);
+    pthread_join(status->tid, NULL);
+    pthread_mutex_destroy(&status->mutex);
+    pthread_cond_destroy(&status->cond);
+}
+
+static inline void _destroy_signal_status(VIDispatcherSignalStatus* const restrict status)
+{
+    assert(status);
+    pthread_mutex_destroy(&status->mutex);
+    pthread_cond_destroy(&status->cond);
 }
 
 static void _th_irq_worker_signal_handler(int signal, siginfo_t* info, void* ctx)
