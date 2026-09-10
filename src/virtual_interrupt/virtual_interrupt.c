@@ -50,6 +50,7 @@ static inline void _preemption_status_wait(VIPreemptionStatus* status);
 
 static inline void _start_worker(VIWorkerStatus* worker);
 static inline VIWorkerStatus* _get_active_worker(const VIDispatcher* const restrict d);
+static inline VIWorkerStatus* _get_worker(const VIDispatcher* const restrict d, const size_t i);
 static inline VIWorkerStatus* _prepare_new_worker(
         VIDispatcher* const restrict d, const IrqLine func_index);
 
@@ -293,13 +294,11 @@ void vidispatcher_destroy(VIDispatcher* const restrict dispatcher)
         pthread_cancel(dispatcher->dispatcher_tid);
         pthread_join(dispatcher->dispatcher_tid, NULL);
 
-        for(size_t i=0; i< span_len(&dispatcher->workers); i++)
+        for(size_t i=1; i< span_len(&dispatcher->workers); i++)
         {
-            VIWorkerStatus* worker = NULL;
-            SpanError out_status; 
+            VIWorkerStatus* worker = _get_worker(dispatcher, i);
 
-            span_get(&dispatcher->workers, i, &worker, &out_status);
-            assert(out_status == SpanError_None && worker);
+            assert( worker );
 
             pthread_cancel(worker->preemption_status.tid);
             pthread_join(worker->preemption_status.tid, NULL);
@@ -781,13 +780,19 @@ static inline VIWorkerStatus* _prepare_new_worker(
 
 static inline VIWorkerStatus* _get_active_worker(const VIDispatcher* const restrict d)
 {
+    assert(d);
+    return _get_worker(d, d->executing_worker);
+}
+
+static inline VIWorkerStatus* _get_worker(const VIDispatcher* const restrict d, const size_t i)
+{
     VIWorkerStatus* res = NULL;
     SpanError span_res;
     assert(d);
 
-    if ( d->executing_worker > 0 && d->executing_worker <= span_len(&d->workers) )
+    if ( i > 0 && i <= span_len(&d->workers) )
     {
-        span_get(&d->workers, d->executing_worker - 1, &res, &span_res);
+        span_get(&d->workers, i - 1, &res, &span_res);
 
         assert( span_res == SpanError_None );
     }

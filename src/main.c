@@ -199,6 +199,8 @@ int main(int argc, char *argv[])
 end:
     if( strcmp(error_buf, "") ) fprintf(stderr, "wamr error: %s\n", error_buf);
 
+    vidispatcher_destroy(&vi_dispatcher);
+
     if ( module_inst )          wasm_runtime_terminate(module_inst);
     if ( main_exec_env )        wasm_runtime_destroy_exec_env(main_exec_env);
     if ( module_inst )          wasm_runtime_deinstantiate(module_inst);
