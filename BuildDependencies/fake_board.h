@@ -2,9 +2,15 @@
 
 #include "nob.h"
 
-#ifndef WASI_SDK
-#define WASI_SDK "../wasi-sdk-27.0-x86_64-linux"
-#endif // !WASI_SDK
+
+#ifndef WASI_SDK_VERSION
+#define WASI_SDK_VERSION "34"
+#endif // !WASI_SDK_VERSION
+
+#define WASI_SDK_NAME "wasi-sdk-"WASI_SDK_VERSION".0-x86_64-linux"
+#define WASI_SDK_TAR WASI_SDK_NAME".tar.gz"
+#define WASI_SDK_MIRROR "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-"WASI_SDK_VERSION"/"WASI_SDK_TAR
+
 
 bool f_build_fakeboard(bool verbose, const char* path_main);
 
@@ -14,6 +20,8 @@ bool f_build_fakeboard(bool verbose, const char* path_main);
 #include "defs.h"
 bool f_build_fakeboard(bool verbose, const char* path_main)
 {
+    bool res = false;
+    Cmd cmd = {0};
     const char* exported_functions[] = 
     {
         "board_main",
@@ -23,11 +31,23 @@ bool f_build_fakeboard(bool verbose, const char* path_main)
         "led_value_i2",
     };
 
-    bool res = false;
-    Cmd cmd = {0};
+    if ( !file_exists(WASI_SDK_NAME"/VERSION") )
+    {
+        if ( !file_exists(WASI_SDK_NAME".tar.gz") )
+        {
+            cmd_append(&cmd, "wget", WASI_SDK_MIRROR);
+            cmd_append(&cmd, "-O", WASI_SDK_TAR);
+            if ( !(res = cmd_run(&cmd)) ) goto end;
+        }
 
-    cmd_append(&cmd, WASI_SDK"/bin/clang");
-    cmd_append(&cmd, "--sysroot="WASI_SDK"/share/wasi-sysroot");
+        cmd_append(&cmd, "tar");
+        cmd_append(&cmd, "-xf", WASI_SDK_TAR);
+        if ( !(res = cmd_run(&cmd)) ) goto end;
+    }
+
+
+    cmd_append(&cmd, "./"WASI_SDK_NAME"/bin/clang");
+    cmd_append(&cmd, "--sysroot=./"WASI_SDK_NAME"/share/wasi-sysroot");
     cmd_append(&cmd, "--target=wasm32-wasip1-threads");
     cmd_append(&cmd, "-pthread");
 

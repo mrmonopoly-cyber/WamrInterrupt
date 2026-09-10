@@ -9,3 +9,4 @@ fake_board.aot
 spscq_tester
 fake_board.wasm
 wamrc
+wasi-sdk*
