@@ -132,7 +132,7 @@ int main(int argc, char *argv[])
         GOTO_END_AND_CUSTOM_ERROR("failed loading board main");
     }
 
-    if ( (vi_err = vidispatcher_init(&vi_dispatcher, module_inst, main_func,  2, 4)) )
+    if ( (vi_err = vidispatcher_init(&vi_dispatcher, module_inst, main_func,  2, 1)) )
     {
         GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
     }

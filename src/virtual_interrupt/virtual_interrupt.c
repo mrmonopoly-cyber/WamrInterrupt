@@ -183,7 +183,7 @@ VIError vidispatcher_init(
 //======================================init workers==========================================
     {
         SpanError out_status; 
-        span_alloc_up_to(&workers, depth, &out_status);
+        span_resize(&workers, depth, &out_status);
         assert(out_status == SpanError_None);
     }
     for(size_t i=0; i<depth; i++)
@@ -205,6 +205,7 @@ VIError vidispatcher_init(
     dispatcher->n_funcs = n_lines;
     dispatcher->funcs = funcs;
     dispatcher->workers = workers;
+    dispatcher->module_inst = module_inst;
 
     return res;
 
@@ -747,9 +748,23 @@ static inline VIWorkerStatus* _prepare_new_worker(
 
     if ( d->executing_worker == span_len(&d->workers) - 1 )
     {
-        span_alloc_up_to(&d->workers, d->executing_worker << 1, &span_out_status);
+        const size_t new_stack_size = d->executing_worker << 1;
+        VIError vi_error;
 
+        printf("VIDispatcher: reached stack limit, expanding to: %zu\n", new_stack_size);
+        span_resize(&d->workers, new_stack_size, &span_out_status);
         assert( span_out_status == SpanError_None );
+
+        for (size_t i=d->executing_worker; i<new_stack_size; i++)
+        {
+            span_get(&d->workers, i, &worker, &span_out_status);
+            assert( span_out_status == SpanError_None );
+
+            assert( d->module_inst );
+            vi_error = _init_worker(worker, d->module_inst, d->funcs, &d->signal_status);
+            assert(vi_error == VIError_None);
+        }
+
     }
 
     d->executing_worker++;

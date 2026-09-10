@@ -92,6 +92,8 @@ typedef struct __VirtualInterruptDispatcher
     pthread_t dispatcher_tid;
     size_t executing_worker; //INFO: 0 means None, K means workers[k-1] IS CURRENTLY EXECUTING
 
+    wasm_module_inst_t module_inst;
+
 }VIDispatcher;
 
 
