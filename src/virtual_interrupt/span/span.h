@@ -126,7 +126,7 @@ SpanError __span_resize(
 
         for (size_t c = span->cap; c < new_cap; c++)
         {
-            new_chunks[c] = calloc(span->chunk_size, ele_size);
+            new_chunks[c] = malloc(span->chunk_size * ele_size);
             if ( !new_chunks[c] )
             {
                 span->chunks = new_chunks;
