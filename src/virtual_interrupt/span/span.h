@@ -102,7 +102,7 @@ void __span_destroy(const struct __SpanCommon* const restrict span);
 
 SpanError __span_resize(
         struct __SpanCommon* span,
-        const size_t i,
+        const size_t len,
         const size_t ele_size)
 {
     assert(ele_size);
@@ -110,7 +110,7 @@ SpanError __span_resize(
 
     if (!span->chunk_size) span->chunk_size = SPAN_CHUNK_SIZE;
 
-    const size_t chunk_index = i / span->chunk_size;
+    const size_t chunk_index = len / span->chunk_size;
 
     if (chunk_index > span->cap) 
     {
@@ -133,11 +133,8 @@ SpanError __span_resize(
         span->chunks = new_chunks;
         span->cap = new_cap;
     }
-
-    if (i >= span->len)
-    {
-        span->len = i + 1;
-    }
+    
+    span->len = len;
 
     return SpanError_None;
 }
