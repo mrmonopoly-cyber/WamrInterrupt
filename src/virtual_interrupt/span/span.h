@@ -39,10 +39,10 @@ struct __SpanCommon
 
 #define span_cfg_init(CHUNK_SIZE) {{NULL, (CHUNK_SIZE), 0, 0, 0}, NULL}
 
-#define span_alloc_up_to(SPAN, I, OUT_STATUS)                                   \
+#define span_resize(SPAN, I, OUT_STATUS)                                        \
     do{                                                                         \
         __typeof__(*(SPAN))* _s = (SPAN);                                       \
-        *(OUT_STATUS) = __span_alloc_up_to(                                     \
+        *(OUT_STATUS) = __span_resize(                                          \
                 &_s->common,                                                    \
                 (I),                                                            \
                 sizeof(*_s->_data_type));                                       \
@@ -82,7 +82,7 @@ struct __SpanCommon
         __span_destroy(&_s->common, sizeof(*_s->_data_type));                   \
     }while(0)
 
-SpanError __span_alloc_up_to(
+SpanError __span_resize(
         struct __SpanCommon* span,
         const size_t i,
         const size_t ele_size);
@@ -105,7 +105,7 @@ void __span_destroy(const struct __SpanCommon* const restrict span, const size_t
 
 #ifdef SPAN_IMPLEMENTATION
 
-SpanError __span_alloc_up_to(
+SpanError __span_resize(
         struct __SpanCommon* span,
         const size_t i,
         const size_t ele_size)
@@ -150,6 +150,8 @@ SpanError __span_alloc_up_to(
 SpanError __span_write(
         struct __SpanCommon* span, const size_t i, const void* data, const size_t ele_size)
 {
+    SpanError res = SpanError_None;
+
     assert(ele_size);
     if(!span || !data) return SpanError_InvalidInput;
 
@@ -157,33 +159,8 @@ SpanError __span_write(
 
     const size_t chunk_index = i / span->chunk_size;
     const size_t chunk_offset = i % span->chunk_size;
-
-    if (chunk_index >= span->cap) 
-    {
-        const size_t new_cap = chunk_index + 1;
-
-        void** new_chunks = (void**) realloc(span->chunks, new_cap * sizeof(*new_chunks));
-        if (!new_chunks) return SpanError_Libc;
-
-        for (size_t c = span->cap; c < new_cap; c++)
-        {
-            new_chunks[c] = calloc(span->chunk_size, ele_size);
-            if ( !new_chunks[c] )
-            {
-                span->chunks = new_chunks;
-                span->cap = c;
-                return SpanError_Libc; 
-            }
-        }
-        
-        span->chunks = new_chunks;
-        span->cap = new_cap;
-    }
-
-    if (i >= span->len)
-    {
-        span->len = i + 1;
-    }
+    
+    if ( (res = __span_resize(span, i, ele_size)) ) return res;
 
     uint8_t* target_chunk = (uint8_t*)span->chunks[chunk_index];
     memcpy(target_chunk + (chunk_offset * ele_size), data, ele_size);
