@@ -194,10 +194,7 @@ int main(int argc, char **argv)
 
     mkdir_if_not_exists(BUILD_DIR);
 
-    if(
-            args.build ||
-            args.run && !file_exists(O_FILE)
-      )
+    if( args.build || args.run )
     {
         //wamr
         if(!f_build_wamr())
