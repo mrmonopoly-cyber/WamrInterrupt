@@ -34,7 +34,7 @@
         __typeof__ (*QUEUE)* p_queue = (QUEUE);                                                 \
         bool* p_out_res = (OUT_RES);                                                            \
         SPSCQ_ASSERT_CAP(p_queue);                                                              \
-        SPSCQ_ASSERT_TYPES(typeof(*p_queue->data), typeof((DATA)));                             \
+        SPSCQ_ASSERT_TYPES(__typeof__(*p_queue->data), __typeof__((DATA)));                     \
         const size_t write = atomic_load_explicit(&p_queue->write, memory_order_relaxed);       \
         const size_t read = atomic_load_explicit(&p_queue->read, memory_order_acquire);         \
         const size_t next_write = (write + 1) & ( SPSCQ_EXTRACT_CAP(p_queue)  - 1 );            \
@@ -54,7 +54,7 @@
         __typeof__ (OUT_PTR) p_out_ptr = (OUT_PTR);                                             \
         bool* p_out_res = (OUT_RES);                                                            \
         SPSCQ_ASSERT_CAP(p_queue);                                                              \
-        SPSCQ_ASSERT_TYPES(typeof(*p_queue->data), typeof((*p_out_ptr)));                       \
+        SPSCQ_ASSERT_TYPES(__typeof__(*p_queue->data), __typeof__((*p_out_ptr)));               \
         const size_t read = atomic_load_explicit(&p_queue->read, memory_order_relaxed);         \
         const size_t write = atomic_load_explicit(&p_queue->write, memory_order_acquire);       \
         const size_t next_read = (read + 1) & ( SPSCQ_EXTRACT_CAP(p_queue)  - 1 );              \
@@ -73,7 +73,7 @@
         __typeof__ (*OUT_PTR)* p_out_ptr = (OUT_PTR);                                           \
         bool* p_out_res = (OUT_RES);                                                            \
         SPSCQ_ASSERT_CAP(p_queue);                                                              \
-        SPSCQ_ASSERT_TYPES(typeof(*p_queue->data), typeof((*p_out_ptr)));                       \
+        SPSCQ_ASSERT_TYPES(__typeof__(*p_queue->data), __typeof__((*p_out_ptr)));               \
         const size_t cap = SPSCQ_EXTRACT_CAP((QUEUE));                                          \
         const size_t read = atomic_load_explicit(&p_queue->read, memory_order_acquire);         \
         const size_t write = atomic_load_explicit(&p_queue->write, memory_order_acquire);       \
