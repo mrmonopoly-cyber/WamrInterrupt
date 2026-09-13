@@ -74,7 +74,7 @@ void apply_global_definitions(Cmd* cmd, ArrayViewGDef defs)
 
     FOR_EACH_FAT_ARRAY(defs, def)
     {
-        if(def && def->def)
+        if(def && def->val)
         {
             cmd_append(cmd, temp_sprintf("-D%s=%s", def->def, def->val));
         }
@@ -133,6 +133,7 @@ ArrayViewString default_compiler_opts(void)
 {
     static const char* opts[] = 
     {
+        "-std=c11",
         "-Wall",
         "-Wextra",
         "-ggdb",
