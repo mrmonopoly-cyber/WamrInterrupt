@@ -8,20 +8,10 @@
 #define NOB_IMPLEMENTATION
 #include "BuildDependencies/nob.h"
 
-#include "BuildDependencies/c_cli.h"
-
-typedef struct CCliUserArgs{
-    bool help;
-    bool verbose;
-    bool test;
-    bool run;
-    bool build;
-    bool clean;
-}CliArgs;
+#define CLI_IMPLEMENTATION
+#include "BuildDependencies/cli.h"
 
 static CliArgs args;
-
-static inline bool cli_parse(CliArgs* args, const int argc, char** argv);
 
 static bool f_build_wamr(void)
 {
@@ -190,6 +180,7 @@ int main(int argc, char **argv)
     GO_REBUILD_URSELF_PLUS(argc, argv,
             "./BuildDependencies/fake_board.h",
             "./BuildDependencies/c_cli.h",
+            "./BuildDependencies/cli.h",
             "./BuildDependencies/defs.h"
             );
 
@@ -203,7 +194,10 @@ int main(int argc, char **argv)
 
     mkdir_if_not_exists(BUILD_DIR);
 
-    if(args.build)
+    if(
+            args.build ||
+            args.run && !file_exists(O_FILE)
+      )
     {
         //wamr
         if(!f_build_wamr())
@@ -243,94 +237,9 @@ int main(int argc, char **argv)
     if ( args.clean )
     {
         walk_dir(BUILD_DIR, walk_delete, .post_order = true);
+        if ( file_exists(O_FILE) ) delete_file(O_FILE);
     }
 
 
   return 0;
-}
-
-
-#define CCLI_IMPLEMENTATION
-#include "BuildDependencies/c_cli.h"
-
-CCLI_PARSER_DECLARE(test);
-CCLI_PARSER_DECLARE(build);
-CCLI_PARSER_DECLARE(run);
-CCLI_PARSER_DECLARE(clean);
-
-static const CCliArgDef defs[] = 
-{
-    //--test, -t
-    {
-        .f_long = CCLI_LONG_FLAG(test),
-        .f_short = CCLI_SHORT_FLAG(t),
-        .f_args = CCLI_NO_ARG,
-        .f_description = "run the tests",
-        .f_parser = CCLI_PARSER_NAME(test),
-    },
-
-    //--build, -b
-    {
-        .f_long = CCLI_LONG_FLAG(build),
-        .f_short = CCLI_SHORT_FLAG(b),
-        .f_args = CCLI_NO_ARG,
-        .f_description = "build the sources",
-        .f_parser = CCLI_PARSER_NAME(build),
-    },
-
-    //--run, -r
-    {
-        .f_long = CCLI_LONG_FLAG(run),
-        .f_short = CCLI_SHORT_FLAG(r),
-        .f_args = CCLI_NO_ARG,
-        .f_description = "run the sources",
-        .f_parser = CCLI_PARSER_NAME(run),
-    },
-
-    //--clean, -c
-    {
-        .f_long = CCLI_LONG_FLAG(clean),
-        .f_short = CCLI_SHORT_FLAG(c),
-        .f_args = CCLI_NO_ARG,
-        .f_description = "clean the sources",
-        .f_parser = CCLI_PARSER_NAME(clean),
-    },
-};
-
-static void cli_default(CliArgs* const restrict args)
-{
-    args->test = false;
-    args->build = true;
-    args->run = true;
-}
-
-static inline bool cli_parse(CliArgs* args, const int argc, char** argv)
-{
-    return c_cli_parse(defs, CCLI_ARRAYSIZE(defs), args, argc, argv, cli_default);
-}
-
-CCLI_PARSER_DECLARE_FULL(test, args, ctx)
-{
-    args->build = true;
-    args->run= true;
-    args->test = true;
-    return CCliActionOK;
-}
-
-CCLI_PARSER_DECLARE_FULL(build, args, ctx)
-{
-    args->build = true;
-    return CCliActionOK;
-}
-
-CCLI_PARSER_DECLARE_FULL(run, args, ctx)
-{
-    args->run = true;
-    return CCliActionOK;
-}
-
-CCLI_PARSER_DECLARE_FULL(clean, args, ctx)
-{
-    args->clean = true;
-    return CCliActionOK;
 }

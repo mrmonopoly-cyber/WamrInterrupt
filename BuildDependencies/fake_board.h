@@ -45,6 +45,51 @@ bool f_build_fakeboard(bool verbose, const char* path_main)
         if ( !(res = cmd_run(&cmd)) ) goto end;
     }
 
+    if ( !file_exists(THIRDPARTY"/wamr/wasm-micro-runtime/wamr-compiler/build/wamrc") )
+    {
+        bool build_ok = false;
+
+        cmd_append(&cmd, "git");
+        cmd_append(&cmd, "-C", THIRDPARTY"/wamr/wasm-micro-runtime");
+        cmd_append(&cmd, "apply");
+        cmd_append(&cmd, "../wamrc_build.patch");
+        if ( !(res = cmd_run(&cmd)) ) goto end;
+
+        {
+            const char* pwd = get_current_dir_temp();
+
+            set_current_dir(THIRDPARTY"/wamr/wasm-micro-runtime/wamr-compiler");
+            cmd_append(&cmd, "./build_llvm.sh");
+            build_ok = cmd_run(&cmd);
+
+            if ( build_ok )
+            {
+                cmd_append(&cmd, "cmake");
+                cmd_append(&cmd, "-B", "build");
+                cmd_append(&cmd, "-S", ".");
+                cmd_append(&cmd, "-G", "Ninja");
+                build_ok = cmd_run(&cmd);
+            }
+
+            if ( build_ok )
+            {
+                cmd_append(&cmd, "cmake");
+                cmd_append(&cmd, "--build", "build");
+                cmd_append(&cmd, "--config", "Release");
+                build_ok = cmd_run(&cmd);
+            }
+
+
+            set_current_dir(pwd);
+        }
+
+        cmd_append(&cmd, "git");
+        cmd_append(&cmd, "-C", THIRDPARTY"/wamr/wasm-micro-runtime");
+        cmd_append(&cmd, "apply", "-R");
+        cmd_append(&cmd, "../wamrc_build.patch");
+        if ( !(res = cmd_run(&cmd)) || !build_ok ) goto end;
+    }
+
 
     cmd_append(&cmd, "./"WASI_SDK_NAME"/bin/clang");
     cmd_append(&cmd, "--sysroot=./"WASI_SDK_NAME"/share/wasi-sysroot");
@@ -77,9 +122,9 @@ bool f_build_fakeboard(bool verbose, const char* path_main)
     cmd_append(&cmd, path_main);
     if ( !(res = cmd_run(&cmd)) ) goto end;
 
-    //../wamrc_building/wasm-micro-runtime/wamr-compiler/build/wamrc --emit-custom-sections=name -o fake_board.aot fake_board.wasm
+    //./ThirdParty/wasm-micro-runtime/wamr-compiler/build/wamrc --emit-custom-sections=name -o fake_board.aot fake_board.wasm
 
-    cmd_append(&cmd, "./wamrc");
+    cmd_append(&cmd, "./"THIRDPARTY"/wamr/wasm-micro-runtime/wamr-compiler/build/wamrc");
     cmd_append(&cmd, "--emit-custom-sections=name");
     cmd_append(&cmd, "-o", "fake_board.aot", "fake_board.wasm");
 

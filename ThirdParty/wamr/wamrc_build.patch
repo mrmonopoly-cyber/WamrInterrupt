@@ -1,0 +1,12 @@
+diff --git a/build-scripts/build_llvm.py b/build-scripts/build_llvm.py
+index 890c3151..f16f512b 100755
+--- a/build-scripts/build_llvm.py
++++ b/build-scripts/build_llvm.py
+@@ -60,6 +60,7 @@ def build_llvm(llvm_dir, platform, backends, projects, use_clang=False, extra_fl
+     LLVM_COMPILE_OPTIONS = [
+         '-DCMAKE_BUILD_TYPE:STRING="Release"',
+         "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
++        '-DCMAKE_CXX_FLAGS="-include cstdint"',
+         "-DLLVM_APPEND_VC_REV:BOOL=ON",
+         "-DLLVM_BUILD_EXAMPLES:BOOL=OFF",
+         "-DLLVM_BUILD_LLVM_DYLIB:BOOL=OFF",
