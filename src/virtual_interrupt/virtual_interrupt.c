@@ -25,6 +25,12 @@
 
 //=====================================macros====================================================
 
+#define FOR_EACH_IRQ_WORKER_INDEX(NAME, WORKERS) \
+    for (size_t NAME = 1; i <= (span_len(WORKERS)); i++)
+
+#define FOR_EACH_IRQ_WORKER_RANGE(NAME, MAX) \
+    for (size_t NAME = 1; i <= (MAX); i++)
+
 //=====================================types=====================================================
 
 //=====================================function declarations======================================
@@ -175,11 +181,14 @@ VIError vidispatcher_init_full(
 //=========================================error handling======================================
 end:
     assert(res != VIError_None);
-    for(size_t i=1; i<=workers_ok; i++)
+    FOR_EACH_IRQ_WORKER_RANGE(i, workers_ok)
     {
         VIIrqWorkerStatus* worker = _get_worker(dispatcher, i);
         assert( worker );
+        vi_irq_worker_destroy(worker);
     }
+
+    vi_main_logic_destroy(&dispatcher->main_fun_status);
 
     span_destroy(&dispatcher->workers);
     if (funcs) free(funcs);
@@ -258,7 +267,7 @@ void vidispatcher_destroy(VIDispatcher* const restrict dispatcher)
     {
         vi_dispatcher_status_destroy(&dispatcher->dispatcher);
 
-        for(size_t i=1; i<= span_len(&dispatcher->workers); i++)
+        FOR_EACH_IRQ_WORKER_INDEX(i, &dispatcher->workers)
         {
             VIIrqWorkerStatus* worker = _get_worker(dispatcher, i);
             vi_irq_worker_destroy(worker);
