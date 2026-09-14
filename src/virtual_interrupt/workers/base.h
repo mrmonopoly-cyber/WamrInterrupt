@@ -37,16 +37,6 @@ static inline VIError vi_worker_status_init(
 
     atomic_init(&status->working_status, WorkerStatus_Init);
 
-    sigset_t set = {0};
-    sigemptyset(&set);
-    sigaddset(&set, SIG_PREEMPTION_WORKERS);
-    if ( sigprocmask(SIG_UNBLOCK, &set, NULL) < 0 )
-    {
-        _vi_set_errno(errno);
-        return VIError_Libc;
-    }
-
-
     int err =pthread_create(
             &status->th_id,
             NULL, 
@@ -68,7 +58,7 @@ static inline void vi_worker_status_suspend(VIWorkerStatus* const restrict statu
 
     if ( atomic_exchange(&status->working_status, WorkerStatus_Suspended) != WorkerStatus_Suspended )
     {
-        pthread_kill(status->th_id, SIG_PREEMPTION_WORKERS);
+        pthread_kill(status->th_id, _vi_get_signal(VISignals_Suspend));
     }
 }
 
@@ -77,7 +67,7 @@ static inline void vi_worker_status_resume(VIWorkerStatus* const restrict status
     assert( status );
 
     atomic_store(&status->working_status, WorkerStatus_Working);
-    pthread_kill(status->th_id, SIG_RESUME_WORKERS);
+    pthread_kill(status->th_id, _vi_get_signal(VISignals_Resume));
 }
 
 static inline void vi_worker_status_set_working_mode(
@@ -100,7 +90,7 @@ static inline VIError vi_worker_status_self_suspend(void)
 {
     sigset_t set = {0};
     sigfillset(&set);
-    sigdelset(&set, SIG_RESUME_WORKERS);
+    sigdelset(&set, _vi_get_signal(VISignals_Resume));
     sigsuspend(&set);
 
     return VIError_None;
@@ -111,7 +101,7 @@ static inline VIError vi_worker_status_signal(VIWorkerStatus* const restrict sta
     assert(status);
     int err;
 
-    if ( (err = pthread_kill(status->th_id, SIG_RESUME_WORKERS) != 0) )
+    if ( (err = pthread_kill(status->th_id, _vi_get_signal(VISignals_Resume)) != 0) )
     {
         _vi_set_errno(err);
         return VIError_Libc;

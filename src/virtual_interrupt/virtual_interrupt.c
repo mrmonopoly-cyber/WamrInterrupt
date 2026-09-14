@@ -2,6 +2,7 @@
 
 //=====================================includes===================================================
 #include <assert.h>
+#include <bits/types/sigset_t.h>
 #include <errno.h>
 #include <pthread.h>
 #include <signal.h>
@@ -39,24 +40,39 @@ static inline VIIrqWorkerStatus* _prepare_new_worker(
 
 //=========================================implementation=========================================
 
-#define VI_ERROR_WAMR_NO_EXCEPTION  ""
-int VI_ERROR_ERRNO;
-const char* VI_ERROR_WAMR_EXCEPTION = VI_ERROR_WAMR_NO_EXCEPTION;
-
-VIError vidispatcher_init(
+VIError vidispatcher_init_full(
         VIDispatcher* const restrict dispatcher,
         wasm_module_inst_t module_inst,
         wasm_function_inst_t main_f,
         const size_t n_lines,
-        const size_t depth)
+        const VIDispatcherConf conf)
 {
     VIError res = VIError_None;
     IrqFuncHandler* funcs = NULL;
     size_t workers_ok=0;
+    sigset_t set;
+    const size_t depth = conf.depth;
 
-    if( !dispatcher || !module_inst || !depth || !main_f )
+    if (
+            !dispatcher             ||
+            !module_inst            ||
+            !main_f                 ||
+            !depth
+       )
     {
         res = VIError_InvalidInput;
+        goto end;
+    }
+
+    sigemptyset(&set);
+
+    if ( (res = _vi_set_signal(VISignals_Suspend, conf.suspend_signal)) != VIError_None )
+    {
+        goto end;
+    }
+
+    if ( (res = _vi_set_signal(VISignals_Resume, conf.resume_signal)) != VIError_None )
+    {
         goto end;
     }
 
@@ -65,8 +81,7 @@ VIError vidispatcher_init(
 
     if ( !funcs )
     {
-        res = VIError_Libc;
-        VI_ERROR_ERRNO = errno;
+        _vi_set_errno(errno);
         goto end;
     }
 
@@ -75,32 +90,36 @@ VIError vidispatcher_init(
     minheap_init(&dispatcher->minheap_ureq);
 
 //======================================init signals=========================================
-    struct sigaction sa ={0};
-    sigemptyset(&sa.sa_mask);
-
-    sa.sa_handler = _th_irq_worker_signal_handler;
-    if ( sigaction(SIG_PREEMPTION_WORKERS, &sa, NULL) < 0 )
     {
-        res =VIError_Libc;
-        _vi_set_errno(errno);
-        goto end;
-    }
+        const int sig_suspend = _vi_get_signal(VISignals_Suspend);
+        const int sig_resume = _vi_get_signal(VISignals_Resume);
+        struct sigaction sa ={0};
+        sigemptyset(&sa.sa_mask);
 
-    sa.sa_handler = _th_irq_resume_signal_handler;
-    if ( sigaction(SIG_RESUME_WORKERS, &sa, NULL) < 0 )
-    {
-        res =VIError_Libc;
-        _vi_set_errno(errno);
-        goto end;
-    }
+        sa.sa_handler = _th_irq_worker_signal_handler;
+        if ( sigaction(sig_suspend, &sa, NULL) < 0 )
+        {
+            res =VIError_Libc;
+            _vi_set_errno(errno);
+            goto end;
+        }
 
-    sigaddset(&sa.sa_mask, SIG_RESUME_WORKERS);
-    sigaddset(&sa.sa_mask, SIG_PREEMPTION_WORKERS);
-    if ( sigprocmask(SIG_BLOCK, &sa.sa_mask, NULL) < 0 )
-    {
-        res =VIError_Libc;
-        _vi_set_errno(errno);
-        goto end;
+        sa.sa_handler = _th_irq_resume_signal_handler;
+        if ( sigaction(sig_resume, &sa, NULL) < 0 )
+        {
+            res =VIError_Libc;
+            _vi_set_errno(errno);
+            goto end;
+        }
+
+        sigaddset(&sa.sa_mask, sig_resume);
+        sigaddset(&sa.sa_mask, sig_suspend);
+        if ( sigprocmask(SIG_BLOCK, &sa.sa_mask, NULL) < 0 )
+        {
+            res =VIError_Libc;
+            _vi_set_errno(errno);
+            goto end;
+        }
     }
 
 //====================================init main function thread===============================
@@ -254,14 +273,14 @@ static void* _th_dispatcher(void* arg)
         //waiting for something to do
         if (
                 spscq_is_empty(c_ureq) &&
-                !strcmp(VI_ERROR_WAMR_EXCEPTION,VI_ERROR_WAMR_NO_EXCEPTION)
+                !_vi_exists_wamr_exception()
            )
         {
             printf("VIDispatcher: waiting for something to do: "
                     "read: %ld, write: %ld, wamr_exception:--%s--\n",
                     atomic_load(&dispatcher->channel_ready_ureq.read),
                     atomic_load(&dispatcher->channel_ready_ureq.write),
-                    VI_ERROR_WAMR_EXCEPTION
+                    _vi_get_wamr_exception()
                   );
             vi_worker_status_self_suspend();
             printf("VIDispatcher: dispatcher woke up\n");
@@ -384,11 +403,11 @@ static void* _th_dispatcher(void* arg)
         }
 
         //IF and exception is caught signal it to the user and reset it
-        if ( strcmp(VI_ERROR_WAMR_EXCEPTION,VI_ERROR_WAMR_NO_EXCEPTION) )
+        if ( _vi_exists_wamr_exception() )
         {
             //TODO: logger
-            fprintf(stderr, "thread error wamr call func: %s\n", VI_ERROR_WAMR_EXCEPTION);
-            VI_ERROR_WAMR_EXCEPTION = VI_ERROR_WAMR_NO_EXCEPTION;
+            fprintf(stderr, "thread error wamr call func: %s\n", _vi_get_wamr_exception());
+            _vi_clean_wamr_exception();
         }
     }
 
@@ -467,7 +486,7 @@ static inline VIIrqWorkerStatus* _get_worker(const VIDispatcher* const restrict 
 //=====================================signal handlers============================================
 static void _th_irq_worker_signal_handler(int signal)
 {
-    assert(signal == SIG_PREEMPTION_WORKERS);
+    assert(signal == (int) _vi_get_signal(VISignals_Suspend));
 
     write(STDOUT_FILENO, "thread %zu, suspending:\n", pthread_self());
     vi_worker_status_self_suspend();
@@ -476,14 +495,7 @@ static void _th_irq_worker_signal_handler(int signal)
 
 static void _th_irq_resume_signal_handler(int signal)
 {
-    if ( signal != SIG_RESUME_WORKERS )
-    {
-        char error[128] = {};
-        int len = snprintf(error, sizeof(error),
-                "!!!INVALID SIGNAL TRIGGERS RESUME FUNCTION: expected: %d, given: %d!!!\n",
-                SIG_RESUME_WORKERS, signal);
-        write(STDERR_FILENO, error, len >=0 ? len : 0);
-    }
+    assert(signal == (int) _vi_get_signal(VISignals_Resume));
 
     /*does nothing*/
 }

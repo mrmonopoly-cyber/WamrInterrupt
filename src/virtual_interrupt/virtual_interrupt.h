@@ -36,13 +36,35 @@ typedef struct __VirtualInterruptDispatcher
     wasm_module_inst_t module_inst;
 }VIDispatcher;
 
+typedef struct
+{
+    int suspend_signal;
+    int resume_signal;
+    size_t depth;
+}VIDispatcherConf;
 
-VIError vidispatcher_init(
+VIError vidispatcher_init_full(
         VIDispatcher* const restrict dispatcher,
         wasm_module_inst_t module_inst,
         wasm_function_inst_t main_f,
         const size_t n_lines,
-        const size_t depth);
+        const VIDispatcherConf conf);
+
+static inline VIError vidispatcher_init(
+        VIDispatcher* const restrict dispatcher,
+        wasm_module_inst_t module_inst,
+        wasm_function_inst_t main_f,
+        const size_t n_lines
+        )
+{
+    const VIDispatcherConf default_conf =
+    {
+        .depth = 8,
+        .suspend_signal = VI_DEFAULT_SIG_SUSPEND,
+        .resume_signal = VI_DEFAULT_SIG_RESUME,
+    };
+    return vidispatcher_init_full(dispatcher, module_inst, main_f, n_lines, default_conf);
+}
 
 VIError vidispatcher_assign_irq_to_line(
         VIDispatcher* const restrict dispatcher,

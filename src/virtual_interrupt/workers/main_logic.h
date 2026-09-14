@@ -136,7 +136,7 @@ static void* _th_main_thread(void* arg)
     }
 
     sigemptyset(&set);
-    sigaddset(&set, SIG_PREEMPTION_WORKERS);
+    sigaddset(&set, _vi_get_signal(VISignals_Suspend));
     if ( ( err =pthread_sigmask(SIG_UNBLOCK, &set, NULL) ) < 0 )
     {
         res = VIError_Libc;
