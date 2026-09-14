@@ -1,8 +1,5 @@
 #include <assert.h>
 #include <stddef.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdint.h>
 
 #define SPAN_ASSERT_TYPES(T1, T2) \
     static_assert(__builtin_types_compatible_p(T1, T2), "invalid types")
@@ -74,8 +71,9 @@ struct __SpanCommon
 
 #define span_len(SPAN) ( (SPAN)->common.len )
 
-
 #define span_destroy(SPAN) __span_destroy(&(SPAN)->common)
+
+const char* span_err_to_str(const SpanError err);
 
 SpanError __span_resize(
         struct __SpanCommon* span,
@@ -99,6 +97,24 @@ void __span_destroy(const struct __SpanCommon* const restrict span);
 //============================================implementation===================================
 
 #ifdef SPAN_IMPLEMENTATION
+#include <errno.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+const char* span_err_to_str(const SpanError err)
+{
+    switch (err)
+    {
+        case SpanError_None:            return "None";
+        case SpanError_Libc:            return strerror(errno);
+        case SpanError_InvalidInput:    return "invalid input";
+        case SpanError_OutOfBounds:     return "out of bounds";
+    }
+
+    assert(0 && "unreachable");
+}
 
 SpanError __span_resize(
         struct __SpanCommon* span,
@@ -112,7 +128,7 @@ SpanError __span_resize(
 
     const size_t chunk_index = len / span->chunk_size;
 
-    if (chunk_index > span->cap) 
+    if (chunk_index >= span->cap) 
     {
         const size_t new_cap = chunk_index + 1;
 
@@ -152,7 +168,7 @@ SpanError __span_write(
     const size_t chunk_index = i / span->chunk_size;
     const size_t chunk_offset = i % span->chunk_size;
     
-    if ( (res = __span_resize(span, i, ele_size)) ) return res;
+    if ( (res = __span_resize(span, i + 1, ele_size)) ) return res;
 
     uint8_t* target_chunk = (uint8_t*)span->chunks[chunk_index];
     memcpy(target_chunk + (chunk_offset * ele_size), data, ele_size);
@@ -166,7 +182,7 @@ SpanError __span_get(
 {
     assert(ele_size);
     if(!span || !out ) return SpanError_InvalidInput;
-    if(i >= span->len || !span->chunk_size ) return SpanError_OutOfBounds;
+    if(i > span->len || !span->chunk_size ) return SpanError_OutOfBounds;
 
     const size_t chunk_index = i / span->chunk_size;
     const size_t chunk_offset = i % span->chunk_size;
@@ -220,7 +236,8 @@ void test_span()
     for(size_t i = 0; i < 30; i++)
     {
         span_get(&span, i, &data, &err);
-        printf("get span_status: %d, expected: %zu, got: %zu\n", err, i, *data);
+        printf("get span_status: %s, expected: %zu, got: %zu\n",
+                span_err_to_str(err), i, *data);
         assert(err == SpanError_None && *data == (uintptr_t) i);
     }
 
