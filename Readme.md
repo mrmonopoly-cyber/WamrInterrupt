@@ -7,6 +7,9 @@ The system implements:
 - masking
 - stack unwinding
 
+> [!IMPORTANT]
+> This poc only works on **GNU/Linux**
+
 # Building
 
 The building and the execution is controlled by the *nob* builder. 
