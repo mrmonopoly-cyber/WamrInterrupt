@@ -186,6 +186,22 @@ end:
     return res;
 }
 
+VIError vidispatcher_init(
+        VIDispatcher* const restrict dispatcher,
+        wasm_module_inst_t module_inst,
+        wasm_function_inst_t main_f,
+        const size_t n_lines
+        )
+{
+    const VIDispatcherConf default_conf =
+    {
+        .depth = 8,
+        .suspend_signal = VI_DEFAULT_SIG_SUSPEND,
+        .resume_signal = VI_DEFAULT_SIG_RESUME,
+    };
+    return vidispatcher_init_full(dispatcher, module_inst, main_f, n_lines, default_conf);
+}
+
 VIError vidispatcher_assign_irq_to_line(
         VIDispatcher* const restrict dispatcher,
         const IrqFuncHandler irq_handler,
@@ -255,6 +271,21 @@ void vidispatcher_destroy(VIDispatcher* const restrict dispatcher)
 
         *dispatcher = (VIDispatcher) {};
     }
+}
+
+const char* vi_error_to_str(const VIError err)
+{
+    extern int VI_ERROR_ERRNO;
+    switch (err)
+    {
+        case VIError_None:                  return "";
+        case VIError_InvalidInput:          return "invalid input";
+        case VIError_Queue:                 return "Internal Queue error: Full?";
+        case VIError_WAMR:                  return "wamr error";
+        case VIError_Libc:                  return "libc error";
+    }
+
+    assert(0 && "unreachable");
 }
 
 static void* _th_dispatcher(void* arg)
