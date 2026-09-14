@@ -123,6 +123,7 @@ ArrayViewString default_src_dir_opts(void)
     static const char* opts[] = 
     {
         "src/launcher",
+        "src/virtual_interrupt",
         //add here your sources directory like ThirdParty dependencies sources
     };
 
