@@ -259,7 +259,6 @@ static void* _th_dispatcher(void* arg)
 {
     uintptr_t res = VIError_None;
     VIDispatcher* dispatcher = arg;
-    IrqLine ureq;
     VIIrqWorkerStatus* old_worker, *new_worker;
     SPSCQ_UReq* c_ureq = &dispatcher->channel_ready_ureq;
     bool spscq_op_ok = false;
@@ -270,6 +269,7 @@ static void* _th_dispatcher(void* arg)
 //========================================logic=================================================
     while( true )
     {
+start_dispatcher_loop:
         //waiting for something to do
         if (
                 spscq_is_empty(c_ureq) &&
@@ -290,23 +290,54 @@ static void* _th_dispatcher(void* arg)
         //old interrupt ended, unwinding execution to find suspended interrupt if it exists to
         //resume it
         bool worker_finish  = false;
+        printf("VIDispatcher: checking if worker finished: current depth: %zu\n",
+                dispatcher->executing_worker);
         while( dispatcher->executing_worker )
         {
             old_worker = _get_active_worker(dispatcher);
             if(
                     old_worker &&
-                    vi_irq_worker_get_mode(old_worker) == WorkerStatus_Suspended
+                    vi_irq_worker_get_mode(old_worker) == WorkerStatus_Done
               )
             {
                 dispatcher->executing_worker--;
                 worker_finish  = true;
+                printf("VIDispatcher: doing the stuck unwinding: current depth %zu\n",
+                        dispatcher->executing_worker);
             }
             else if( worker_finish ) //resume stopped worker
             {
-                printf("VIDispatcher: resuming suspended worker: %zu\n",
-                        dispatcher->executing_worker);
-                vi_irq_worker_resume(old_worker);
-                break;
+                bool minheap_has_something = false;
+                IrqLine ureq_peek = 0;
+                IrqLine ureq_pop = 0;
+
+                minheap_peek(&dispatcher->minheap_ureq, &ureq_peek, &minheap_has_something);
+
+                old_worker = _get_active_worker(dispatcher);
+                if ( minheap_has_something && ureq_peek > atomic_load(&old_worker->func_index) )
+                {
+                    VIIrqWorkerStatus* new_worker;
+                    bool pop_ok = false;
+
+                    printf("VIDispatcher: starting new irq in waiting queue: %zu\n", ureq_pop);
+
+                    minheap_pop(&dispatcher->minheap_ureq, &ureq_pop, &pop_ok);
+                    assert( pop_ok && ureq_pop == ureq_peek );
+
+                    new_worker = _prepare_new_worker(dispatcher, ureq_pop);
+
+                    assert( new_worker );
+
+                    vi_irq_worker_resume(new_worker);
+                }
+                else
+                {
+                    printf("VIDispatcher: resuming suspended worker: %zu\n",
+                            dispatcher->executing_worker);
+                    vi_irq_worker_resume(old_worker);
+                }
+
+                goto start_dispatcher_loop;
             }
             else
             {
@@ -319,6 +350,7 @@ static void* _th_dispatcher(void* arg)
         //there is no executing_worker THAN set suspended the current executing_worker and
         //set up a new executing_worker to handle the user request
         //IF the main was running it is be suspended
+        IrqLine ureq;
         spscq_pop(&dispatcher->channel_ready_ureq, &ureq, &spscq_op_ok);
         old_worker = _get_active_worker(dispatcher);
         if(spscq_op_ok && ( !old_worker || (size_t) ureq >= old_worker->func_index ) )
@@ -409,6 +441,7 @@ static void* _th_dispatcher(void* arg)
             fprintf(stderr, "thread error wamr call func: %s\n", _vi_get_wamr_exception());
             _vi_clean_wamr_exception();
         }
+
     }
 
 //====================================end==================================================

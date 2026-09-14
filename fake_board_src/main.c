@@ -33,6 +33,16 @@ void led_value_i2(void)
     }
 }
 
+void led_value_i3(void)
+{
+    host_stdout_print("irq calling led_value_i3, take a long time execute: 4 secs");
+    led_value_raw = 69;
+    for(int i =0; i<4 * 1000; i++)
+    {
+        usleep(1000);
+    }
+}
+
 int led_value(void)
 {
     return led_value_raw;

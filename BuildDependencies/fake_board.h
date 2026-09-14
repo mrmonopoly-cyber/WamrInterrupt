@@ -29,6 +29,7 @@ bool f_build_fakeboard(bool verbose, const char* path_main)
         "new_led_value",
         "led_value_i1",
         "led_value_i2",
+        "led_value_i3",
     };
 
     if ( !file_exists(WASI_SDK_NAME"/VERSION") )

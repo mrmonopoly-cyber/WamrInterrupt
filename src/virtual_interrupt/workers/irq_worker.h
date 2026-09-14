@@ -161,7 +161,7 @@ static void* _th_irq_worker(void* arg)
     {
         assert(th_arg.status->p_dispatcher);
 
-        vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Suspended);
+        vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Done);
         vi_worker_status_self_suspend();
 
         size_t func_index = atomic_load(&status->func_index);
@@ -175,7 +175,6 @@ static void* _th_irq_worker(void* arg)
             _vi_set_wamr_exception(module_inst);
         }
         printf("VIWorker: finshed func: %zu\n", func_index);
-        vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Done);
 
         vi_dispatcher_status_signal(th_arg.status->p_dispatcher);
     }

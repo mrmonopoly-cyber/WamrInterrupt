@@ -58,6 +58,7 @@ int main(int argc, char *argv[])
     {
         "led_value_i1",
         "led_value_i2",
+        "led_value_i3",
     };
 
     char* buf = NULL;
@@ -132,7 +133,8 @@ int main(int argc, char *argv[])
         GOTO_END_AND_CUSTOM_ERROR("failed loading board main");
     }
 
-    if ( (vi_err = vidispatcher_init(&vi_dispatcher, module_inst, main_func,  2)) )
+    vi_err = vidispatcher_init(&vi_dispatcher, module_inst, main_func, ArraySize(irq_functions));
+    if ( vi_err != VIError_None )
     {
         GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
     }
@@ -140,13 +142,13 @@ int main(int argc, char *argv[])
     for (size_t i=0; i<ArraySize(irq_functions); i++)
     {
         wasm_function_inst_t func = wasm_runtime_lookup_function(module_inst, irq_functions[i]);
-        if ( (vi_err = vidispatcher_assign_irq_to_line(&vi_dispatcher, func, i)) )
+        if ( (vi_err = vidispatcher_assign_irq_to_line(&vi_dispatcher, func, i)) != VIError_None )
         {
             GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
         }
     }
 
-    if ( (vi_err = vidispatcher_start(&vi_dispatcher)) )
+    if ( (vi_err = vidispatcher_start(&vi_dispatcher)) != VIError_None )
     {
         GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
     }
@@ -158,7 +160,7 @@ int main(int argc, char *argv[])
 
     printf("triggering interrupt in ascencing priority\n");
 
-    if ( (vi_err = vidispatcher_trigger_interrupt(&vi_dispatcher, 0)) )
+    if ( (vi_err = vidispatcher_trigger_interrupt(&vi_dispatcher, 0)) != VIError_None )
     {
         GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
     }
@@ -166,7 +168,7 @@ int main(int argc, char *argv[])
     printf("normal execution\n");
     usleep(2 * 1000 * 1000);
 
-    if ( (vi_err = vidispatcher_trigger_interrupt(&vi_dispatcher, 1)) )
+    if ( (vi_err = vidispatcher_trigger_interrupt(&vi_dispatcher, 1)) != VIError_None )
     {
         GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
     }
@@ -175,7 +177,7 @@ int main(int argc, char *argv[])
     usleep(10 * 1000 * 1000);
 
     printf("triggering interrupt in descencing priority\n");
-    if ( (vi_err = vidispatcher_trigger_interrupt(&vi_dispatcher, 1)) )
+    if ( (vi_err = vidispatcher_trigger_interrupt(&vi_dispatcher, 2)) != VIError_None )
     {
         GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
     }
@@ -183,13 +185,39 @@ int main(int argc, char *argv[])
     printf("normal execution\n");
     usleep(2 * 1000 * 1000);
 
-    if ( (vi_err = vidispatcher_trigger_interrupt(&vi_dispatcher, 0)) )
+    if ( (vi_err = vidispatcher_trigger_interrupt(&vi_dispatcher, 0)) != VIError_None )
     {
         GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
     }
 
     printf("normal execution\n");
-    usleep(10 * 1000 * 1000);
+    usleep(20 * 1000 * 1000);
+
+    printf("triggering interrupt in mixed order\n");
+
+    if ( (vi_err = vidispatcher_trigger_interrupt(&vi_dispatcher, 0)) != VIError_None )
+    {
+        GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
+    }
+
+    printf("normal execution\n");
+    usleep(2 * 1000 * 1000);
+
+    if ( (vi_err = vidispatcher_trigger_interrupt(&vi_dispatcher, 2)) != VIError_None )
+    {
+        GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
+    }
+
+    printf("normal execution\n");
+    usleep(2 * 1000 * 1000);
+
+    if ( (vi_err = vidispatcher_trigger_interrupt(&vi_dispatcher, 1)) != VIError_None )
+    {
+        GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
+    }
+
+    printf("normal execution\n");
+    usleep(20 * 1000 * 1000);
 
     //========================================stopping thread=====================================
     printf("cancelling thread\n");

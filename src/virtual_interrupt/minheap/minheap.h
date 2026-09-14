@@ -103,6 +103,22 @@
         }                                                                                       \
     }while(0);
 
+#define minheap_peek(MINHEAP, OUT_DATA, OUT_RES)                                                \
+    do{                                                                                         \
+        __typeof__ (*MINHEAP)* _h = (MINHEAP);                                                  \
+        __typeof__ (*OUT_DATA)* p_out_data= (OUT_DATA);                                         \
+        bool* p_out_res = (OUT_RES);                                                            \
+                                                                                                \
+        MINHEAP_ASSERT_TYPES(__typeof__(*_h->data), __typeof__(*OUT_DATA));                     \
+                                                                                                \
+        *p_out_res = false;                                                                     \
+                                                                                                \
+        if ( _h->len == 0 ) break;                                                              \
+                                                                                                \
+        *p_out_res = true;                                                                      \
+        *p_out_data = _h->data[0];                                                              \
+    }while(0);
+
 #define minheap_is_empty(MINHEAP) ( (MINHEAP)->len == 0 )
 
 
@@ -140,6 +156,11 @@ void minheap_test()
     {
         size_t to_find = i + 1;
         size_t out = 0;
+
+        printf("minheap peek %zu: given: %zu, expected: %zu\n", i, out, to_find);
+        minheap_peek(&minheap, &out, &op_ok);
+        assert(op_ok && out == to_find);
+
         minheap_pop(&minheap, &out, &op_ok);
         printf("minheap pop %zu: given: %zu, expected: %zu\n", i, out, to_find);
         assert(op_ok && out == to_find);
