@@ -11,11 +11,11 @@
 
 #define MINHEAP_TEMPLATE(T, CAP) struct {T data[(CAP)]; size_t len; }
 
-#define MINHEAP_STATIC_INIT {}
+#define MINHEAP_STATIC_INIT {0}
 
 #define minheap_init(MINHEAP)                                                                   \
     do{                                                                                         \
-        *(MINHEAP) = (__typeof__ (*MINHEAP)) {};                                                \
+        *(MINHEAP) = (__typeof__ (*MINHEAP)) {0};                                               \
     }while(0);
 
 #define minheap_push(MINHEAP, DATA, OUT_RES)                                                    \

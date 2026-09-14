@@ -278,7 +278,7 @@ void vidispatcher_destroy(VIDispatcher* const restrict dispatcher)
         span_destroy(&dispatcher->workers);
         if ( dispatcher->funcs ) free(dispatcher->funcs);
 
-        *dispatcher = (VIDispatcher) {};
+        *dispatcher = (VIDispatcher) {0};
     }
 }
 

@@ -30,5 +30,5 @@ static inline void vi_dispatcher_status_signal(VIDispatcherStatus* const restric
 static inline void vi_dispatcher_status_destroy(VIDispatcherStatus* const restrict status)
 {
     assert(status);
-    return vi_worker_status_destroy(&status->base);
+    vi_worker_status_destroy(&status->base);
 }

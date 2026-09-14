@@ -114,8 +114,8 @@ static void* _th_main_thread(void* arg)
     ThMainThreadArg th_arg = *(ThMainThreadArg*) arg;
 
     wasm_module_inst_t module_inst = th_arg.module_inst;
-    wasm_exec_env_t th_exec_env = {};
-    sigset_t set = {};
+    wasm_exec_env_t th_exec_env = {0};
+    sigset_t set = {0};
     int err;
 
     //====================================init=================================================

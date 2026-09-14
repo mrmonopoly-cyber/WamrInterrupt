@@ -6,8 +6,12 @@
 #include <unistd.h>
 
 #include "virtual_interrupt/virtual_interrupt.h"
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
 #include "wasm_export.h"
 #include "bh_read_file.h"
+#pragma GCC diagnostic push
 
 static char error_buf[256] = {0};
 

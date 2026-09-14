@@ -137,6 +137,7 @@ ArrayViewString default_compiler_opts(void)
         "-Wall",
         "-Wextra",
         "-ggdb",
+        "-pedantic",
         "-fsanitize=address,undefined",
         //add here your compiler options: -c, -ggdb, -O2, ...
     };
