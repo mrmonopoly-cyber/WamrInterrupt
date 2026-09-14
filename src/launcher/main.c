@@ -5,7 +5,9 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "virtual_interrupt/virtual_interrupt.h"
+#define LB_BRIDGE_IMPLEMENTATION
+#include "../launcher_board_bridge.h"
+#include "../virtual_interrupt/virtual_interrupt.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
@@ -54,6 +56,12 @@ void new_host_stdout_print(wasm_exec_env_t env, const char * msg)
     printf("board print advanced: %s\n", msg);
 }
 
+void new_board_set_executor(wasm_exec_env_t env, const Executor executor)
+{
+    (void) env;
+    board_set_executor(executor);
+}
+
 int main(int argc, char *argv[])
 {
     const char* input_file = argv[1];
@@ -91,7 +99,14 @@ int main(int argc, char *argv[])
             .func_ptr = (void*) new_host_stdout_print,
             .signature = "($)",
             .attachment = NULL,
-        }
+        },
+
+        {
+            .symbol ="board_set_executor",
+            .func_ptr = (void*) new_board_set_executor,
+            .signature = "(i)",
+            .attachment = NULL,
+        },
     };
 
     //===============================================init=========================================

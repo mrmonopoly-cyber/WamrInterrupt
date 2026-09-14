@@ -153,7 +153,7 @@ static bool f_run(void)
     bool res = false;
     Cmd cmd = {0};
 
-    if ( !args.test && !f_build_fakeboard(args.verbose, "./fake_board_src/main.c") )
+    if ( !args.test && !f_build_fakeboard(args.verbose, "./src/fake_board_src/main.c") )
     {
         nob_log(ERROR, "failed fake board");
         return 1;

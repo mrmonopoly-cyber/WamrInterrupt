@@ -2,6 +2,12 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#define LB_BRIDGE_PREFIX extern
+#include "../launcher_board_bridge.h"
+
+__attribute__((import_module("env"), import_name("board_set_executor")))
+extern void board_set_executor(const int32_t executor);
+
 __attribute__((import_module("env"), import_name("host_stdout_print")))
 extern void host_stdout_print(const char * msg);
 
