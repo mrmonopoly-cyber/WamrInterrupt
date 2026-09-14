@@ -1,0 +1,8 @@
+Checks: >
+  -*,
+  bugprone-signal-handler,
+  concurrency-thread-canceltype-asynchronous,
+  concurrency-mt-unsafe
+
+CheckOptions:
+  bugprone-signal-handler.AsyncSafeFunctionSet: POSIX

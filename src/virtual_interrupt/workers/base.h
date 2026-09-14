@@ -91,7 +91,7 @@ static inline VIError vi_worker_status_self_suspend(void)
     sigset_t set = {0};
     sigfillset(&set);
     sigdelset(&set, _vi_get_signal(VISignals_Resume));
-    sigsuspend(&set);
+    sigsuspend(&set); //NOLINT(concurrency-mt-unsafe)
 
     return VIError_None;
 }

@@ -97,7 +97,6 @@ void __span_destroy(const struct __SpanCommon* const restrict span);
 //============================================implementation===================================
 
 #ifdef SPAN_IMPLEMENTATION
-#include <errno.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -108,7 +107,7 @@ const char* span_err_to_str(const SpanError err)
     switch (err)
     {
         case SpanError_None:            return "None";
-        case SpanError_Libc:            return strerror(errno);
+        case SpanError_Libc:            return "Libc errno";
         case SpanError_InvalidInput:    return "invalid input";
         case SpanError_OutOfBounds:     return "out of bounds";
     }

@@ -86,7 +86,7 @@ static inline const char* vi_error_to_str(const VIError err)
         case VIError_InvalidInput:          return "invalid input";
         case VIError_Queue:                 return "Internal Queue error: Full?";
         case VIError_WAMR:                  return "wamr error";
-        case VIError_Libc:                  return strerror(VI_ERROR_ERRNO);
+        case VIError_Libc:                  return "libc error";
     }
 
     assert(0 && "unreachable");

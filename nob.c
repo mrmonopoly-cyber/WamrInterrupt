@@ -52,12 +52,6 @@ static bool f_build_wamr(void)
         {"CMAKE_BUILD_TYPE"                     ,"Release"},
     };
 
-    const GDef feature_gen_defs [] =
-    {
-        {"WASM_ENABLE_THREAD_MGR"               , "1"},
-        {"WASM_ENABLE_CUSTOM_NAME_SECTION"      , "1"},
-    };
-
     cmd_append(&cmd, "cmake");
     cmd_append(&cmd, "-S", wamr_path);
     cmd_append(&cmd, "-B", BUILD_DIR"/wamr");
@@ -82,18 +76,22 @@ end:
 static bool f_compile(Walk_Entry entry)
 {
     bool res=true;
+    Cmd cmd = {0};
     const char* name = temp_file_name(entry.path);
     const char* suffix = name + strlen(name) - 2;
 
     if(entry.type == FILE_REGULAR && !strcmp(suffix, ".c"))
     {
-        Cmd cmd = {0};
         const char* file_name = nob_temp_file_name(entry.path);
 
         if ( args.test && !strcmp(file_name, "main.c" ))
         {
             entry.path = "./BuildDependencies/dummy_main.c";
         }
+
+        cmd_append(&cmd, "clang-tidy");
+        cmd_append(&cmd, "--warnings-as-errors=*", entry.path);
+        if( !(res=cmd_run(&cmd)) ) goto end;
 
         cmd_append(&cmd, CC);
 
@@ -111,9 +109,10 @@ static bool f_compile(Walk_Entry entry)
 
         res = cmd_run(&cmd);
 
-        cmd_free(cmd);
     }
 
+end:
+    cmd_free(cmd);
     return res;
 }
 

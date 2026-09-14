@@ -114,7 +114,7 @@ VIError vidispatcher_init_full(
 
         sigaddset(&sa.sa_mask, sig_resume);
         sigaddset(&sa.sa_mask, sig_suspend);
-        if ( sigprocmask(SIG_BLOCK, &sa.sa_mask, NULL) < 0 )
+        if ( pthread_sigmask(SIG_BLOCK, &sa.sa_mask, NULL) < 0 )
         {
             res =VIError_Libc;
             _vi_set_errno(errno);
