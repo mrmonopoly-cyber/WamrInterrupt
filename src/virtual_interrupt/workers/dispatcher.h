@@ -23,6 +23,7 @@ static inline VIError vi_dispatcher_status_init(VIDispatcherStatus* const restri
 static inline void vi_dispatcher_status_signal(VIDispatcherStatus* const restrict status)
 {
     assert(status);
+    atomic_fetch_add(&status->n_requests, 1);
     vi_worker_status_signal(&status->base);
 }
 

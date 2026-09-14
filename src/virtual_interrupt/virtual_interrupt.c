@@ -260,7 +260,6 @@ static void* _th_dispatcher(void* arg)
     uintptr_t res = VIError_None;
     VIDispatcher* dispatcher = arg;
     VIIrqWorkerStatus* old_worker, *new_worker;
-    SPSCQ_UReq* c_ureq = &dispatcher->channel_ready_ureq;
     bool spscq_op_ok = false;
 
 //========================================init==================================================
@@ -271,10 +270,7 @@ static void* _th_dispatcher(void* arg)
     {
 start_dispatcher_loop:
         //waiting for something to do
-        if (
-                spscq_is_empty(c_ureq) &&
-                !_vi_exists_wamr_exception()
-           )
+        if ( atomic_load(&dispatcher->dispatcher.n_requests) == 0 )
         {
             printf("VIDispatcher: waiting for something to do: "
                     "read: %ld, write: %ld, wamr_exception:--%s--\n",
@@ -285,6 +281,8 @@ start_dispatcher_loop:
             vi_worker_status_self_suspend();
             printf("VIDispatcher: dispatcher woke up\n");
         }
+
+        atomic_fetch_sub(&dispatcher->dispatcher.n_requests, 1);
 
 
         //old interrupt ended, unwinding execution to find suspended interrupt if it exists to
