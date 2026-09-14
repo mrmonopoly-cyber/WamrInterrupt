@@ -217,6 +217,8 @@ VIError vidispatcher_start(VIDispatcher* const restrict dispatcher)
         return VIError_Libc;
     }
 
+    vi_main_logic_resume(&dispatcher->main_fun_status);
+
     return VIError_None;
 }
 

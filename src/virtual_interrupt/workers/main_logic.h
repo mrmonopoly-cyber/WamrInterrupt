@@ -145,6 +145,8 @@ static void* _th_main_thread(void* arg)
     }
     atomic_store(th_arg.out, VIError_None);
 
+    vi_worker_status_self_suspend();
+
 //=======================================logic=================================================
     th_arg.status->base.working_status = WorkerStatus_Working;
     if ( wasm_runtime_call_wasm(th_exec_env, th_arg.main_f, 0, NULL) )

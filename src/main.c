@@ -148,12 +148,16 @@ int main(int argc, char *argv[])
         }
     }
 
+    //========================================fantastic logic=====================================
+
+    printf("normal execution\n");
+    usleep(3 * 1000 * 1000);
+
+    printf("starting the board\n");
     if ( (vi_err = vidispatcher_start(&vi_dispatcher)) != VIError_None )
     {
         GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
     }
-
-    //========================================fantastic logic=====================================
 
     printf("normal execution\n");
     usleep(3 * 1000 * 1000);
