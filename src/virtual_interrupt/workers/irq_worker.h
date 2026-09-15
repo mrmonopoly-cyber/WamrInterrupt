@@ -8,8 +8,10 @@
 #include "base.h"
 #include "dispatcher.h"
 #include "wasm_export.h"
-#include "../span/span.h"
+
 #include "../common.h"
+
+#include "../span/span.h"
 
 typedef wasm_function_inst_t IrqFuncHandler;
 
@@ -127,6 +129,7 @@ static void* _th_irq_worker(void* arg)
     wasm_exec_env_t th_exec_env = {0};
     sigset_t set = {0};
     int err;
+    char log_buffer[128] = {0};
 
 //========================================init=================================================
     pthread_cleanup_push(_th_irq_workder_thread_cleanup, &th_exec_env);
@@ -168,13 +171,15 @@ static void* _th_irq_worker(void* arg)
 
         assert(status->p_funcs);
 
-        printf("VIWorker: calling func: %zu\n", func_index);
+        vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
+                "VIWorker: calling func: %zu", func_index);
         vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Working);
         if ( !wasm_runtime_call_wasm(th_exec_env, status->p_funcs[func_index], 0, NULL) )
         {
             _vi_set_wamr_exception(module_inst);
         }
-        printf("VIWorker: finshed func: %zu\n", func_index);
+        vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
+                "VIWorker: finshed func: %zu", func_index);
 
         vi_dispatcher_status_signal(th_arg.status->p_dispatcher);
     }
@@ -188,3 +193,5 @@ end:
     pthread_cleanup_pop(true);
     return (void*) res;
 }
+
+#undef printf

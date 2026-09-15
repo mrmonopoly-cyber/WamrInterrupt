@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "wasm_export.h"
+#include "logger.h"
 
 #define VI_ERROR_WAMR_NO_EXCEPTION  ""
 

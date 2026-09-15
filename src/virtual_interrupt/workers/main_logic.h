@@ -117,6 +117,7 @@ static void* _th_main_thread(void* arg)
     wasm_exec_env_t th_exec_env = {0};
     sigset_t set = {0};
     int err;
+    char log_buffer[128] = {0};
 
     //====================================init=================================================
     pthread_cleanup_push(_th_main_thread_cleanup, &th_exec_env);
@@ -145,9 +146,12 @@ static void* _th_main_thread(void* arg)
     }
     atomic_store(th_arg.out, VIError_None);
 
+    vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer), "VIMainLogic: suspending");
     vi_worker_status_self_suspend();
 
 //=======================================logic=================================================
+    vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
+            "VIMainLogic: starting main");
     th_arg.status->base.working_status = WorkerStatus_Working;
     if ( wasm_runtime_call_wasm(th_exec_env, th_arg.main_f, 0, NULL) )
     {
@@ -156,6 +160,8 @@ static void* _th_main_thread(void* arg)
 
     //INFO: if we reach here it means that the main has ended for any reason which is probably
     //an error unless the hole program ended
+    vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
+            "VIMainLogic: main ended");
     vi_worker_status_signal(&th_arg.status->p_dispatcher_status->base);
     th_arg.status->base.working_status = WorkerStatus_Done;
 
