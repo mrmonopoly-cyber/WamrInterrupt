@@ -61,19 +61,21 @@ VIError vidispatcher_init_full(
     size_t workers_ok=0;
     sigset_t set;
     const size_t depth = conf.depth;
-
     char log_buffer[128] = {0};
 
     if (
-            !dispatcher             ||
-            !module_inst            ||
-            !main_f                 ||
-            !depth
+            !dispatcher                     ||
+            !module_inst                    ||
+            !main_f                         ||
+            !depth                          ||
+            !conf.log_file_base_path 
        )
     {
         res = VIError_InvalidInput;
         goto end;
     }
+
+    vi_log_file_init(conf.log_file_base_path);
 
     sigemptyset(&set);
 
@@ -207,12 +209,7 @@ VIError vidispatcher_init(
         const size_t n_lines
         )
 {
-    const VIDispatcherConf default_conf =
-    {
-        .depth = 8,
-        .suspend_signal = VI_DEFAULT_SIG_SUSPEND,
-        .resume_signal = VI_DEFAULT_SIG_RESUME,
-    };
+    const VIDispatcherConf default_conf = VIDISPATCHERCONF_DEFUALT;
     return vidispatcher_init_full(dispatcher, module_inst, main_f, n_lines, default_conf);
 }
 
@@ -585,12 +582,12 @@ static void _th_irq_worker_signal_handler(int signal)
     assert(signal == (int) _vi_get_signal(VISignals_Suspend));
 
     vi_log(VILoggerLevel_Info, buffer, sizeof(buffer),
-            "thread %zu, suspending:\n", pthread_self());
+            "thread %zu, self suspend", pthread_self());
 
     vi_worker_status_self_suspend();
 
     vi_log(VILoggerLevel_Info, buffer, sizeof(buffer),
-            "thread %zu, resuming:\n", pthread_self());
+            "thread %zu, received resume signal", pthread_self());
 }
 
 static void _th_irq_resume_signal_handler(int signal)

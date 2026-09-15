@@ -12,9 +12,7 @@
 #define VILOGGER_PRINTF_FORMAT(STRING_INDEX, FIRST_TO_CHECK) \
     __attribute__ ((format (printf, STRING_INDEX, FIRST_TO_CHECK)))
 
-#define VILOGGER_FILE_NAME "vi_log"
-
-#define printf(FMT, ...) static_assert(0, "printf is not allowed use vi_log");
+#define printf(...) static_assert(0, "printf is not allowed use vi_log");
 
 typedef enum
 {
@@ -36,7 +34,11 @@ VILOGGER_PREFIX void vi_log(
         const char *fmt,
         ...)VILOGGER_PRINTF_FORMAT(4, 5);
 
+void vi_log_file_init(const char* base_path);
+
 VILOGGER_PREFIX void vi_set_log_handler(VILogHandler* handler);
 VILOGGER_PREFIX VILogHandler* vi_get_log_handler(void);
+
+VILOGGER_PREFIX const char* vi_get_log_file_name(void);
 
 void vi_default_log_handler(VILoggerLevel level, const char* msg);

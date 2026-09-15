@@ -32,6 +32,10 @@ static char error_buf[256] = {0};
 
 #define GOTO_END_AND_CUSTOM_ERROR(...) GOTO_END_AND_CUSTOM_ERROR_LINE(__LINE__, __VA_ARGS__) 
 
+#define printf(...) static_assert(0, "printf is not allowed use vi_log");
+#define log(...) vi_log(VILoggerLevel_Trace, log_buffer, sizeof(log_buffer), __VA_ARGS__)
+#define log_err(...) vi_log(VILoggerLevel_Error, log_buffer, sizeof(log_buffer), __VA_ARGS__)
+
 typedef struct
 {
     wasm_exec_env_t* main_exec_env;
@@ -46,14 +50,16 @@ typedef struct
 
 void host_stdout_print(wasm_exec_env_t env, const char * msg)
 {
+    static char log_buffer[128] = {0};
     (void) env;
-    printf("board print basic: %s\n", msg);
+    log("board print basic: %s\n", msg);
 }
 
 void new_host_stdout_print(wasm_exec_env_t env, const char * msg)
 {
+    static char log_buffer[128] = {0};
     (void) env;
-    printf("board print advanced: %s\n", msg);
+    log("board print advanced: %s\n", msg);
 }
 
 void new_board_set_executor(wasm_exec_env_t env, const Executor executor)
@@ -76,6 +82,7 @@ int main(int argc, char *argv[])
     char* buf = NULL;
     uint32_t file_buffer_size = 0;
     bool init_wamr_ok = false;
+    char log_buffer[128] = {0};
 
     VIDispatcher vi_dispatcher = {0};
     VIError vi_err = {0};
@@ -113,7 +120,7 @@ int main(int argc, char *argv[])
 
     if ( argc < 2)
     {
-        fprintf(stderr, "missing input file: *.aot\n");
+        log_err("missing input file: *.aot");
         return 1;
     }
 
@@ -167,28 +174,31 @@ int main(int argc, char *argv[])
         }
     }
 
+
+    fprintf(stderr, "starting logic, check the log file: %s\n", vi_get_log_file_name());
+
     //========================================fantastic logic=====================================
 
-    printf("normal execution\n");
+    log("normal execution");
     usleep(3 * 1000 * 1000);
 
-    printf("starting the board\n");
+    log("starting the board");
     if ( (vi_err = vidispatcher_start(&vi_dispatcher)) != VIError_None )
     {
         GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
     }
 
-    printf("normal execution\n");
+    log("normal execution");
     usleep(3 * 1000 * 1000);
 
-    printf("triggering interrupt in ascencing priority\n");
+    log("triggering interrupt in ascencing priority");
 
     if ( (vi_err = vidispatcher_trigger_interrupt(&vi_dispatcher, 0)) != VIError_None )
     {
         GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
     }
 
-    printf("normal execution\n");
+    log("normal execution");
     usleep(2 * 1000 * 1000);
 
     if ( (vi_err = vidispatcher_trigger_interrupt(&vi_dispatcher, 1)) != VIError_None )
@@ -196,16 +206,16 @@ int main(int argc, char *argv[])
         GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
     }
 
-    printf("normal execution\n");
+    log("normal execution");
     usleep(10 * 1000 * 1000);
 
-    printf("triggering interrupt in descencing priority\n");
+    log("triggering interrupt in descencing priority");
     if ( (vi_err = vidispatcher_trigger_interrupt(&vi_dispatcher, 2)) != VIError_None )
     {
         GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
     }
 
-    printf("normal execution\n");
+    log("normal execution");
     usleep(2 * 1000 * 1000);
 
     if ( (vi_err = vidispatcher_trigger_interrupt(&vi_dispatcher, 0)) != VIError_None )
@@ -213,17 +223,17 @@ int main(int argc, char *argv[])
         GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
     }
 
-    printf("normal execution\n");
+    log("normal execution");
     usleep(20 * 1000 * 1000);
 
-    printf("triggering interrupt in mixed order\n");
+    log("triggering interrupt in mixed order");
 
     if ( (vi_err = vidispatcher_trigger_interrupt(&vi_dispatcher, 0)) != VIError_None )
     {
         GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
     }
 
-    printf("normal execution\n");
+    log("normal execution");
     usleep(2 * 1000 * 1000);
 
     if ( (vi_err = vidispatcher_trigger_interrupt(&vi_dispatcher, 2)) != VIError_None )
@@ -231,7 +241,7 @@ int main(int argc, char *argv[])
         GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
     }
 
-    printf("normal execution\n");
+    log("normal execution");
     usleep(2 * 1000 * 1000);
 
     if ( (vi_err = vidispatcher_trigger_interrupt(&vi_dispatcher, 1)) != VIError_None )
@@ -239,16 +249,16 @@ int main(int argc, char *argv[])
         GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));
     }
 
-    printf("normal execution\n");
+    log("normal execution");
     usleep(20 * 1000 * 1000);
 
     //========================================stopping thread=====================================
-    printf("cancelling thread\n");
+    log("cancelling thread");
 
-    printf("done\n");
+    log("done");
 
 end:
-    if( strcmp(error_buf, "") ) fprintf(stderr, "wamr error: %s\n", error_buf);
+    if( strcmp(error_buf, "") ) log_err("wamr error: %s\n", error_buf);
 
     vidispatcher_destroy(&vi_dispatcher);
 
