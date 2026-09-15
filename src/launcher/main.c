@@ -116,6 +116,11 @@ int main(int argc, char *argv[])
         },
     };
 
+    VIDispatcherConf vi_conf = VIDISPATCHERCONF_DEFUALT;
+
+    vi_conf.resume_signal = SIGUSR1;
+    vi_conf.suspend_signal = SIGUSR2;
+
     //===============================================init=========================================
 
 
