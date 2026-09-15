@@ -52,14 +52,14 @@ void host_stdout_print(wasm_exec_env_t env, const char * msg)
 {
     static char log_buffer[128] = {0};
     (void) env;
-    log("board print basic: %s\n", msg);
+    log("board print basic: %s", msg);
 }
 
 void new_host_stdout_print(wasm_exec_env_t env, const char * msg)
 {
     static char log_buffer[128] = {0};
     (void) env;
-    log("board print advanced: %s\n", msg);
+    log("board print advanced: %s", msg);
 }
 
 void new_board_set_executor(wasm_exec_env_t env, const Executor executor)
@@ -118,11 +118,15 @@ int main(int argc, char *argv[])
 
     //===============================================init=========================================
 
+
     if ( argc < 2)
     {
-        log_err("missing input file: *.aot");
+        fprintf(stderr, "missing input file: *.aot");
         return 1;
     }
+
+    vi_log_file_init("vi_launcher");
+    vi_minimal_log_level = VILoggerLevel_Trace;
 
     if ( !(init_wamr_ok = wasm_runtime_init()) )
     {
@@ -252,12 +256,11 @@ int main(int argc, char *argv[])
     log("normal execution");
     usleep(20 * 1000 * 1000);
 
-    //========================================stopping thread=====================================
-    log("cancelling thread");
-
-    log("done");
-
 end:
+    //========================================end=====================================
+    log("done");
+    fprintf(stderr, "logic done\n");
+
     if( strcmp(error_buf, "") ) log_err("wamr error: %s\n", error_buf);
 
     vidispatcher_destroy(&vi_dispatcher);
@@ -269,6 +272,8 @@ end:
     if ( init_wamr_ok )         wasm_runtime_destroy();
 
     if ( buf ) free(buf);
+
+    fprintf(stderr, "launder done\n");
     return 0;
 }
 

@@ -70,13 +70,23 @@ fail:
 
 static inline void vi_main_logic_suspend(VIMainLogicStatus* const restrict status)
 {
+    char log_buffer[64] = {0};
+
     assert(status);
+
+    vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
+            "VIDispatcher: suspending main thread");
     vi_worker_status_suspend(&status->base);
 }
 
 static inline void vi_main_logic_resume(VIMainLogicStatus* const restrict status)
 {
+    char log_buffer[64] = {0};
+
     assert(status);
+
+    vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
+            "VIDispatcher: resuming main thread");
     vi_worker_status_resume(&status->base);
 }
 
@@ -126,6 +136,7 @@ static void* _th_main_thread(void* arg)
     if( !module_inst )
     {
         res = VIError_InvalidInput;
+        atomic_store(th_arg.out, res);
         goto end;
     }
 
@@ -133,6 +144,7 @@ static void* _th_main_thread(void* arg)
     if ( !th_exec_env )
     {
         res = VIError_WAMR;
+        atomic_store(th_arg.out, res);
         goto end;
     }
 
@@ -142,17 +154,19 @@ static void* _th_main_thread(void* arg)
     {
         res = VIError_Libc;
         _vi_set_errno(err);
+        atomic_store(th_arg.out, res);
         goto end;
     }
     atomic_store(th_arg.out, VIError_None);
 
     vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer), "VIMainLogic: suspending");
+    vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Suspended);
     vi_worker_status_self_suspend();
 
 //=======================================logic=================================================
     vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
             "VIMainLogic: starting main");
-    th_arg.status->base.working_status = WorkerStatus_Working;
+    vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Working);
     if ( wasm_runtime_call_wasm(th_exec_env, th_arg.main_f, 0, NULL) )
     {
         _vi_set_wamr_exception(module_inst);
@@ -163,11 +177,11 @@ static void* _th_main_thread(void* arg)
     vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
             "VIMainLogic: main ended");
     vi_worker_status_signal(&th_arg.status->p_dispatcher_status->base);
-    th_arg.status->base.working_status = WorkerStatus_Done;
+    vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Done);
 
 //=======================================end==================================================
 end:
-    atomic_store(th_arg.out, res);
+    vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Dead);
     pthread_cleanup_pop(true);
     return (void*) res;
 }

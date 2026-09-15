@@ -103,7 +103,5 @@ static inline VISignals _vi_get_signal(VISignals signal)
 {
     extern int VI_SIGNALS[VISignals_Count];
 
-    assert(signal < VISignals_Count);
-
     return VI_SIGNALS[signal];
 }

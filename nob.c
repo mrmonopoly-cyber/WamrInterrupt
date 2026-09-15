@@ -13,6 +13,13 @@
 
 static CliArgs args;
 
+typedef struct
+{
+    char** items;
+    size_t count;
+    size_t capacity;
+}SourcesList;
+
 static bool f_build_wamr(void)
 {
     static char wamr_root_dir[128] = {0};
@@ -84,17 +91,7 @@ static bool f_compile(Walk_Entry entry)
     {
         const char* file_name = nob_temp_file_name(entry.path);
 
-        if ( args.test && !strcmp(file_name, "main.c" ))
-        {
-            entry.path = "./BuildDependencies/dummy_main.c";
-        }
-
-        cmd_append(&cmd, "clang-tidy");
-        cmd_append(&cmd, "--warnings-as-errors=*", entry.path);
-        if( !(res=cmd_run(&cmd)) ) goto end;
-
         cmd_append(&cmd, CC);
-
         apply_all_defualt_compile_opts(&cmd);
 
         if ( args.test )
@@ -104,6 +101,12 @@ static bool f_compile(Walk_Entry entry)
 
         cmd_append(&cmd, "-c");
         cmd_append(&cmd, "-o", temp_sprintf("%s/%.*s.o", BUILD_DIR, (int) strlen(file_name)-2, file_name));
+
+
+        if ( args.test && !strcmp(file_name, "main.c" ) )
+        {
+            entry.path = "./BuildDependencies/dummy_main.c";
+        }
 
         cmd_append(&cmd, entry.path);
 
@@ -144,6 +147,66 @@ static bool f_link(void)
     res = cmd_run(&cmd);
 
     dir_entry_close(dir);
+    cmd_free(cmd);
+    return res;
+}
+
+static bool _f_check_append_sources(Walk_Entry entry)
+{
+    Cmd cmd = {0};
+    const char* name = temp_file_name(entry.path);
+    const char* suffix = name + strlen(name) - 2;
+    SourcesList* sources = entry.data;
+
+    if(entry.type == FILE_REGULAR && !strcmp(suffix, ".c"))
+    {
+        da_append(sources, strdup(entry.path));
+    }
+
+    return true;
+}
+
+static bool f_check(void)
+{
+    bool res= false;
+    Cmd cmd = {0};
+
+    SourcesList sources = {0};
+
+    cmd_append(&cmd, "clang-tidy");
+    cmd_append(&cmd, "--warnings-as-errors=*");
+
+    //source directories
+    FOR_EACH_FAT_ARRAY_STR(default_src_dir_opts(), dir)
+    {
+        if ( !(res = walk_dir(dir, _f_check_append_sources, .data = &sources)) )
+        {
+            goto end;
+        }
+    }
+
+    for (size_t i=0; i<sources.count; i++)
+    {
+        cmd_append(&cmd, sources.items[i]);
+    }
+
+    cmd_append(&cmd, "--");
+
+    //include path
+    FOR_EACH_FAT_ARRAY_STR(default_include_path_opts(), path)
+    {
+        if(path) cmd_append(&cmd, temp_sprintf("-I%s", path));
+    }
+
+    res = cmd_run(&cmd);
+
+end:
+    for (size_t i=0; i<sources.count; i++)
+    {
+        free(sources.items[i]);
+    }
+
+    da_free(sources);
     cmd_free(cmd);
     return res;
 }
@@ -201,6 +264,12 @@ int main(int argc, char **argv)
         if(!f_build_wamr())
         {
             nob_log(ERROR, "failed building wamr");
+            return 1;
+        }
+
+        if ( !f_check() )
+        {
+            nob_log(ERROR, "failed checking sources");
             return 1;
         }
 

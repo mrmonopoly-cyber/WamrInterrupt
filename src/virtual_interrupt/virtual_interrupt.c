@@ -58,8 +58,6 @@ VIError vidispatcher_init_full(
 {
     VIError res = VIError_None;
     IrqFuncHandler* funcs = NULL;
-    size_t workers_ok=0;
-    sigset_t set;
     const size_t depth = conf.depth;
     char log_buffer[128] = {0};
 
@@ -75,21 +73,10 @@ VIError vidispatcher_init_full(
         goto end;
     }
 
+//========================================logger==================================================
     vi_log_file_init(conf.log_file_base_path);
 
-    sigemptyset(&set);
-
-    if ( (res = _vi_set_signal(VISignals_Suspend, conf.suspend_signal)) != VIError_None )
-    {
-        goto end;
-    }
-
-    if ( (res = _vi_set_signal(VISignals_Resume, conf.resume_signal)) != VIError_None )
-    {
-        goto end;
-    }
-
-//=====================================init memory===========================================
+//==========================================init memory===========================================
     funcs = malloc(n_lines * sizeof(*funcs));
 
     if ( !funcs )
@@ -104,30 +91,38 @@ VIError vidispatcher_init_full(
 
 //======================================init signals=========================================
     {
-        const int sig_suspend = _vi_get_signal(VISignals_Suspend);
-        const int sig_resume = _vi_get_signal(VISignals_Resume);
-        struct sigaction sa ={0};
-        sigemptyset(&sa.sa_mask);
+        const int sig_suspend = conf.suspend_signal;
+        const int sig_resume = conf.resume_signal;
+        sigset_t set;
+        sigemptyset(&set);
 
-        sa.sa_handler = _th_irq_worker_signal_handler;
-        if ( sigaction(sig_suspend, &sa, NULL) < 0 )
+        if ( (res = _vi_set_signal(VISignals_Suspend, sig_suspend)) != VIError_None )
+        {
+            goto end;
+        }
+
+        if ( (res = _vi_set_signal(VISignals_Resume, sig_resume)) != VIError_None )
+        {
+            goto end;
+        }
+
+        if ( signal(sig_suspend, _th_irq_worker_signal_handler) ==  SIG_ERR )
         {
             res =VIError_Libc;
             _vi_set_errno(errno);
             goto end;
         }
 
-        sa.sa_handler = _th_irq_resume_signal_handler;
-        if ( sigaction(sig_resume, &sa, NULL) < 0 )
+        if ( signal(sig_resume, _th_irq_resume_signal_handler) ==  SIG_ERR )
         {
             res =VIError_Libc;
             _vi_set_errno(errno);
             goto end;
         }
 
-        sigaddset(&sa.sa_mask, sig_resume);
-        sigaddset(&sa.sa_mask, sig_suspend);
-        if ( pthread_sigmask(SIG_BLOCK, &sa.sa_mask, NULL) < 0 )
+        sigaddset(&set, sig_resume);
+        sigaddset(&set, sig_suspend);
+        if ( pthread_sigmask(SIG_BLOCK, &set, NULL) < 0 )
         {
             res =VIError_Libc;
             _vi_set_errno(errno);
@@ -174,8 +169,6 @@ VIError vidispatcher_init_full(
         }
 
         if ( res != VIError_None ) goto end;
-
-        workers_ok++;
     }
 
 //=========================================assigning field to dispatcher=======================
@@ -188,17 +181,10 @@ VIError vidispatcher_init_full(
 //=========================================error handling======================================
 end:
     assert(res != VIError_None);
-    FOR_EACH_IRQ_WORKER_RANGE(i, workers_ok)
-    {
-        VIIrqWorkerStatus* worker = _get_worker(dispatcher, i);
-        assert( worker );
-        vi_irq_worker_destroy(worker);
-    }
 
-    vi_main_logic_destroy(&dispatcher->main_fun_status);
-
-    span_destroy(&dispatcher->workers);
+    vidispatcher_destroy(dispatcher);
     if (funcs) free(funcs);
+
     return res;
 }
 
@@ -230,12 +216,14 @@ VIError vidispatcher_assign_irq_to_line(
 
 VIError vidispatcher_start(VIDispatcher* const restrict dispatcher)
 {
+    char log_buffer[64] = {0};
 
     if ( !dispatcher )
     {
         return VIError_InvalidInput;
     }
 
+    vi_worker_status_set_working_mode(&dispatcher->dispatcher.base, WorkerStatus_Init);
     int err =  vi_dispatcher_status_init(&dispatcher->dispatcher, _th_dispatcher, dispatcher);
 
     if( err < 0 )
@@ -244,6 +232,8 @@ VIError vidispatcher_start(VIDispatcher* const restrict dispatcher)
         return VIError_Libc;
     }
 
+    vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
+            "VIDispatcher: starting dispatcher");
     vi_main_logic_resume(&dispatcher->main_fun_status);
 
     return VIError_None;
@@ -265,22 +255,32 @@ VIError vidispatcher_trigger_interrupt(VIDispatcher* const restrict dispatcher, 
 
 void vidispatcher_destroy(VIDispatcher* const restrict dispatcher)
 {
-    if(dispatcher)
+    char log_buffer[64]= {0};
+
+    if( dispatcher )
     {
+        vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer), "destroying main thread");
+        vi_main_logic_destroy(&dispatcher->main_fun_status);
+
+        vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
+                "destroying dispatcher");
         vi_dispatcher_status_destroy(&dispatcher->dispatcher);
 
         FOR_EACH_IRQ_WORKER_INDEX(i, &dispatcher->workers)
         {
             VIIrqWorkerStatus* worker = _get_worker(dispatcher, i);
-            vi_irq_worker_destroy(worker);
-        }
+            WorkerStatus w_status = vi_irq_worker_get_mode(worker);
 
-        vi_main_logic_destroy(&dispatcher->main_fun_status);
+            if ( w_status != WorkerStatus_Init && w_status != WorkerStatus_Dead )
+            {
+                vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
+                        "destroying workder: %zu", i);
+                vi_irq_worker_destroy(worker);
+            }
+        }
 
         span_destroy(&dispatcher->workers);
         if ( dispatcher->funcs ) free(dispatcher->funcs);
-
-        *dispatcher = (VIDispatcher) {0};
     }
 }
 
@@ -309,6 +309,7 @@ static void* _th_dispatcher(void* arg)
 
 //========================================init==================================================
     assert(dispatcher);
+    vi_worker_status_set_working_mode(&dispatcher->dispatcher.base, WorkerStatus_Working);
 
 //========================================logic=================================================
     while( true )
@@ -324,12 +325,21 @@ start_dispatcher_loop:
                     atomic_load(&dispatcher->channel_ready_ureq.write),
                     _vi_get_wamr_exception()
                   );
+            vi_worker_status_set_working_mode(&dispatcher->dispatcher.base, WorkerStatus_Suspended);
             vi_worker_status_self_suspend();
+            vi_worker_status_set_working_mode(&dispatcher->dispatcher.base, WorkerStatus_Working);
             vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
                     "VIDispatcher: dispatcher woke up");
         }
 
         atomic_fetch_sub(&dispatcher->dispatcher.n_requests, 1);
+
+        if ( !atomic_load(&dispatcher->dispatcher.run) )
+        {
+            vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
+                    "VIDispatcher: received termination request");
+            break;
+        }
 
 
         //old interrupt ended, unwinding execution to find suspended interrupt if it exists to
@@ -501,6 +511,8 @@ start_dispatcher_loop:
     }
 
 //====================================end==================================================
+    vi_worker_status_set_working_mode(&dispatcher->dispatcher.base, WorkerStatus_Dead);
+    vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer), "VIDispatcher: dead");
     return (void*) res;
 }
 
@@ -578,21 +590,16 @@ static inline VIIrqWorkerStatus* _get_worker(const VIDispatcher* const restrict 
 //=====================================signal handlers============================================
 static void _th_irq_worker_signal_handler(int signal)
 {
-    char buffer[64] = {0};
-    assert(signal == (int) _vi_get_signal(VISignals_Suspend));
+    //NOLINTNEXTLINE(bugprone-signal-handler)
+    if ( (VISignals) signal == _vi_get_signal(VISignals_Suspend) )
+    {
+        vi_worker_status_self_suspend(); //NOLINT(bugprone-signal-handler)
+    }
 
-    vi_log(VILoggerLevel_Info, buffer, sizeof(buffer),
-            "thread %zu, self suspend", pthread_self());
-
-    vi_worker_status_self_suspend();
-
-    vi_log(VILoggerLevel_Info, buffer, sizeof(buffer),
-            "thread %zu, received resume signal", pthread_self());
 }
 
 static void _th_irq_resume_signal_handler(int signal)
 {
-    assert(signal == (int) _vi_get_signal(VISignals_Resume));
-
+    (void) signal;
     /*does nothing*/
 }

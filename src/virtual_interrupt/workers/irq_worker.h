@@ -13,6 +13,9 @@
 
 #include "../span/span.h"
 
+#define log(...) vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer), __VA_ARGS__)
+#define log_err(...) vi_log(VILoggerLevel_Error, log_buffer, sizeof(log_buffer), __VA_ARGS__)
+
 typedef wasm_function_inst_t IrqFuncHandler;
 
 typedef struct
@@ -22,6 +25,10 @@ typedef struct
 
     IrqFuncHandler* p_funcs;
     atomic_size_t func_index;
+
+    wasm_exec_env_t th_exec_env;
+
+    atomic_bool run;
 }VIIrqWorkerStatus;
 
 typedef struct
@@ -57,6 +64,7 @@ static inline VIError vi_irq_worker_init(
     atomic_init(&out, -1);
 
     atomic_init(&status->func_index, 0);
+    atomic_init(&status->run, true);
 
     status->p_funcs = p_funcs;
     status->p_dispatcher = p_status_dispatcher;
@@ -88,12 +96,6 @@ static inline WorkerStatus vi_irq_worker_get_mode(VIIrqWorkerStatus* const restr
     return vi_worker_status_get_working_mode(&status->base);
 }
 
-static inline void vi_irq_worker_destroy(VIIrqWorkerStatus* const restrict status)
-{
-    assert(status);
-    vi_worker_status_destroy(&status->base);
-}
-
 static inline void vi_irq_worker_suspend(VIIrqWorkerStatus* const restrict status)
 {
     assert(status);
@@ -107,16 +109,35 @@ static inline void vi_irq_worker_resume(VIIrqWorkerStatus* const restrict status
     vi_worker_status_resume(&status->base);
 }
 
+static inline void vi_irq_worker_destroy(VIIrqWorkerStatus* const restrict status)
+{
+    assert(status);
+
+    atomic_store(&status->run, false);
+    vi_irq_worker_resume(status);
+
+    while( vi_irq_worker_get_mode(status) != WorkerStatus_Dead )
+    {
+        usleep(1000);
+    }
+
+    vi_worker_status_destroy(&status->base);
+}
+
 //==========================================implementations======================================
 
 static void _th_irq_workder_thread_cleanup(void* arg)
 {
+    char log_buffer[64] = {0};
     assert(arg);
-    wasm_exec_env_t *th_exec_env = arg;
+    VIIrqWorkerStatus *status = arg;
 
-    assert(*th_exec_env);
-    wasm_runtime_destroy_exec_env(*th_exec_env);
+    assert(status);
+    wasm_runtime_destroy_exec_env(status->th_exec_env);
     wasm_runtime_destroy_thread_env();
+
+    vi_worker_status_set_working_mode(&status->base, WorkerStatus_Dead);
+    log("VIWorker: dead");
 }
 
 static void* _th_irq_worker(void* arg)
@@ -126,25 +147,26 @@ static void* _th_irq_worker(void* arg)
 
     VIIrqWorkerStatus* status = th_arg.status;
     wasm_module_inst_t module_inst = th_arg.module_inst;
-    wasm_exec_env_t th_exec_env = {0};
     sigset_t set = {0};
     int err;
     char log_buffer[128] = {0};
 
 //========================================init=================================================
-    pthread_cleanup_push(_th_irq_workder_thread_cleanup, &th_exec_env);
     wasm_runtime_init_thread_env();
+    pthread_cleanup_push(_th_irq_workder_thread_cleanup, th_arg.status);
 
     if( !module_inst )
     {
         res = VIError_InvalidInput;
+        atomic_store(th_arg.out, res);
         goto end;
     }
 
-    th_exec_env = wasm_runtime_create_exec_env(module_inst, 16 << 10); //16 KB
-    if ( !th_exec_env )
+    status->th_exec_env = wasm_runtime_create_exec_env(module_inst, 16 << 10); //16 KB
+    if ( !status->th_exec_env )
     {
         res = VIError_WAMR;
+        atomic_store(th_arg.out, res);
         goto end;
     }
 
@@ -154,32 +176,37 @@ static void* _th_irq_worker(void* arg)
     {
         res = VIError_Libc;
         _vi_set_errno(err);
+        atomic_store(th_arg.out, res);
         goto end;
     }
 
     atomic_store(th_arg.out, VIError_None);
 
 //=======================================logic=================================================
-    while(1)
+    while( 1 )
     {
         assert(th_arg.status->p_dispatcher);
 
         vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Done);
         vi_worker_status_self_suspend();
 
+        if ( !atomic_load(&th_arg.status->run) )
+        {
+            log("VIWorker: received request to terminate execution");
+            break;
+        }
+
         size_t func_index = atomic_load(&status->func_index);
 
         assert(status->p_funcs);
 
-        vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-                "VIWorker: calling func: %zu", func_index);
+        log("VIWorker: calling func: %zu", func_index);
         vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Working);
-        if ( !wasm_runtime_call_wasm(th_exec_env, status->p_funcs[func_index], 0, NULL) )
+        if ( !wasm_runtime_call_wasm(status->th_exec_env, status->p_funcs[func_index], 0, NULL) )
         {
             _vi_set_wamr_exception(module_inst);
         }
-        vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-                "VIWorker: finshed func: %zu", func_index);
+        log("VIWorker: finshed func: %zu", func_index);
 
         vi_dispatcher_status_signal(th_arg.status->p_dispatcher);
     }
@@ -189,9 +216,9 @@ static void* _th_irq_worker(void* arg)
 
 //=========================================end==================================================
 end:
-    atomic_store(th_arg.out, res);
     pthread_cleanup_pop(true);
     return (void*) res;
 }
 
-#undef printf
+#undef log
+#undef log_err

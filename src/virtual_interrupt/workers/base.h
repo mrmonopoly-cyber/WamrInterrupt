@@ -15,6 +15,7 @@ typedef enum
     WorkerStatus_Working,
     WorkerStatus_Suspended,
     WorkerStatus_Done,
+    WorkerStatus_Dead,
 
     __WorkerStatus_Count
 }WorkerStatus;

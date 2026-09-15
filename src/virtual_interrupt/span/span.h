@@ -102,6 +102,8 @@ void __span_destroy(const struct __SpanCommon* const restrict span);
 #include <stdlib.h>
 #include <string.h>
 
+#include "../logger.h"
+
 const char* span_err_to_str(const SpanError err)
 {
     switch (err)
@@ -194,15 +196,17 @@ SpanError __span_get(
 
 void __span_destroy(const struct __SpanCommon* const restrict span)
 {
+    char buffer[64] = {0};
+
     if( !span || !span->chunks ) return;
 
     for (size_t i=0; i< span->cap; i++)
     {
-        printf("span free chunk: %zu\n", i);
+        vi_log(VILoggerLevel_Info, buffer, sizeof(buffer), "span free chunk: %zu", i);
         if( span->chunks[i] ) free(span->chunks[i]);
     }
 
-    printf("span free chunk root\n");
+    vi_log(VILoggerLevel_Info, buffer, sizeof(buffer), "span free chunk root");
     free(span->chunks);
 }
 
