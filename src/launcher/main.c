@@ -168,7 +168,13 @@ int main(int argc, char *argv[])
         GOTO_END_AND_CUSTOM_ERROR("failed loading board main");
     }
 
-    vi_err = vidispatcher_init(&vi_dispatcher, module_inst, main_func, ArraySize(irq_functions));
+    vi_err = vidispatcher_init_full(
+            &vi_dispatcher,
+            module_inst,
+            main_func,
+            ArraySize(irq_functions),
+            vi_conf
+            );
     if ( vi_err != VIError_None )
     {
         GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));

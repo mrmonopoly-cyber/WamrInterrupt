@@ -34,6 +34,9 @@
 #define FOR_EACH_IRQ_WORKER_RANGE(NAME, MAX) \
     for (size_t NAME = 1; i <= (MAX); i++)
 
+#define log(...) vi_log(VILoggerLevel_Trace, log_buffer, sizeof(log_buffer), __VA_ARGS__)
+#define log_err(...) vi_log(VILoggerLevel_Error, log_buffer, sizeof(log_buffer), __VA_ARGS__)
+
 //=====================================types=====================================================
 
 //=====================================function declarations======================================
@@ -62,10 +65,11 @@ VIError vidispatcher_init_full(
     char log_buffer[128] = {0};
 
     if (
-            !dispatcher                     ||
-            !module_inst                    ||
-            !main_f                         ||
-            !depth                          ||
+            !dispatcher                                     ||
+            !module_inst                                    ||
+            !main_f                                         ||
+            !depth                                          ||
+            conf.suspend_signal == conf.resume_signal       ||
             !conf.log_file_base_path 
        )
     {
