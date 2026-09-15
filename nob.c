@@ -176,6 +176,8 @@ static bool walk_delete(Walk_Entry entry)
 
 int main(int argc, char **argv)
 {
+    set_log_handler(&cancer_log_handler);
+
     GO_REBUILD_URSELF_PLUS(argc, argv,
             "./BuildDependencies/fake_board.h",
             "./BuildDependencies/c_cli.h",
