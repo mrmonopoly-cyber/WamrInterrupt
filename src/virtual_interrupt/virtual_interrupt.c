@@ -230,6 +230,12 @@ VIError vidispatcher_start(VIDispatcher* const restrict dispatcher)
     vi_worker_status_set_working_mode(&dispatcher->dispatcher.base, WorkerStatus_Init);
     int err =  vi_dispatcher_status_init(&dispatcher->dispatcher, _th_dispatcher, dispatcher);
 
+    while( vi_worker_status_get_working_mode(&dispatcher->dispatcher.base) == WorkerStatus_Init )
+    {
+        log("%s waiting dispatcher thread to start", __func__);
+        usleep(1000 * 1000);
+    }
+
     if( err < 0 )
     {
         _vi_set_errno(err);
@@ -266,8 +272,7 @@ void vidispatcher_destroy(VIDispatcher* const restrict dispatcher)
         vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer), "destroying main thread");
         vi_main_logic_destroy(&dispatcher->main_fun_status);
 
-        vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-                "destroying dispatcher");
+        vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer), "destroying dispatcher");
         vi_dispatcher_status_destroy(&dispatcher->dispatcher);
 
         FOR_EACH_IRQ_WORKER_INDEX(i, &dispatcher->workers)
