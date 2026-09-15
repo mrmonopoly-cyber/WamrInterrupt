@@ -479,7 +479,7 @@ start_dispatcher_loop:
         {
             //TODO: logger
             fprintf(stderr, "thread error wamr call func: %s\n", _vi_get_wamr_exception());
-            _vi_clean_wamr_exception();
+            _vi_clear_wamr_exception();
         }
 
     }

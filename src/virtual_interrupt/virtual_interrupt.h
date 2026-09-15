@@ -13,6 +13,13 @@
 #include "workers/workers.h"
 #include "common.h"
 
+#ifndef READY_QUEUE_CAP
+#define READY_QUEUE_CAP 32
+#endif
+
+#ifndef WAIT_QUEUE_CAP
+#define WAIT_QUEUE_CAP 32
+#endif
 
 typedef size_t IrqLine;
 typedef size_t ThreadID;

@@ -10,14 +10,6 @@
 
 #define VI_ERROR_WAMR_NO_EXCEPTION  ""
 
-#ifndef READY_QUEUE_CAP
-#define READY_QUEUE_CAP 32
-#endif
-
-#ifndef WAIT_QUEUE_CAP
-#define WAIT_QUEUE_CAP 32
-#endif
-
 #define VI_DEFAULT_SIG_SUSPEND  SIGPOLL
 #define VI_DEFAULT_SIG_RESUME   SIGCONT
 
@@ -36,7 +28,7 @@ typedef enum
     VISignals_Suspend,
     VISignals_Resume,
 
-    __VISignals_Count
+    VISignals_Count
 }VISignals;
 
 static inline void _vi_set_errno(int error)
@@ -54,21 +46,21 @@ static inline void _vi_set_wamr_exception(wasm_module_inst_t module_inst)
     VI_ERROR_WAMR_EXCEPTION = wasm_runtime_get_exception(module_inst);
 }
 
-static inline bool _vi_exists_wamr_exception()
+static inline bool _vi_exists_wamr_exception(void)
 {
     extern const char* VI_ERROR_WAMR_EXCEPTION;
 
     return strcmp(VI_ERROR_WAMR_EXCEPTION,VI_ERROR_WAMR_NO_EXCEPTION);
 }
 
-static inline const char* _vi_get_wamr_exception()
+static inline const char* _vi_get_wamr_exception(void)
 {
     extern const char* VI_ERROR_WAMR_EXCEPTION;
 
     return VI_ERROR_WAMR_EXCEPTION;
 }
 
-static inline void _vi_clean_wamr_exception()
+static inline void _vi_clear_wamr_exception(void)
 {
     extern const char* VI_ERROR_WAMR_EXCEPTION;
 
@@ -78,9 +70,9 @@ static inline void _vi_clean_wamr_exception()
 static inline VIError _vi_set_signal(VISignals signal, int val)
 {
     sigset_t set;
-    extern int VI_SIGNALS[__VISignals_Count];
+    extern int VI_SIGNALS[VISignals_Count];
 
-    if ( signal >= __VISignals_Count )
+    if ( signal >= VISignals_Count )
     {
         return VIError_InvalidInput;
     }
@@ -93,7 +85,7 @@ static inline VIError _vi_set_signal(VISignals signal, int val)
         return VIError_Libc;
     }
 
-    for (size_t i=0; i<__VISignals_Count; i++)
+    for (size_t i=0; i<VISignals_Count; i++)
     {
         if ( i != signal && VI_SIGNALS[i] == val )
         {
@@ -108,9 +100,9 @@ static inline VIError _vi_set_signal(VISignals signal, int val)
 
 static inline VISignals _vi_get_signal(VISignals signal)
 {
-    extern int VI_SIGNALS[__VISignals_Count];
+    extern int VI_SIGNALS[VISignals_Count];
 
-    assert(signal < __VISignals_Count);
+    assert(signal < VISignals_Count);
 
     return VI_SIGNALS[signal];
 }
