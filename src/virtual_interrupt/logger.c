@@ -8,22 +8,22 @@ static char vi__log_file_name[256];
 static VILogHandler* vi__log_handler = &vi_default_log_handler;
 VILoggerLevel vi_minimal_log_level = VILoggerLevel_Info;
 
-VILOGGER_PREFIX void vi_set_log_handler(VILogHandler* handler)
+void vi_set_log_handler(VILogHandler* handler)
 {
     vi__log_handler = handler;
 }
 
-VILOGGER_PREFIX VILogHandler* vi_get_log_handler(void)
+VILogHandler* vi_get_log_handler(void)
 {
     return vi__log_handler;
 }
 
-VILOGGER_PREFIX const char* vi_get_log_file_name(void)
+const char* vi_get_log_file_name(void)
 {
     return vi__log_file_name;
 }
 
-VILOGGER_PREFIX void vi_log(
+void vi_log(
         VILoggerLevel level,
         char* buffer,
         size_t buffer_len,

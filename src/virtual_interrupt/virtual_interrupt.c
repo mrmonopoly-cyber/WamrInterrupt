@@ -2,7 +2,6 @@
 
 //=====================================includes===================================================
 #include <assert.h>
-#include <bits/types/sigset_t.h>
 #include <errno.h>
 #include <pthread.h>
 #include <signal.h>
