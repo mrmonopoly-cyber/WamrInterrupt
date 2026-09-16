@@ -59,6 +59,12 @@ static bool f_build_wamr(void)
         {"CMAKE_BUILD_TYPE"                     ,"Release"},
     };
 
+    if ( !program_exsists_on_path("cmake") )
+    {
+        nob_log( ERROR, "cmake is not present in your system: compilation aborted");
+        return false;
+    }
+
     cmd_append(&cmd, "cmake");
     cmd_append(&cmd, "-S", wamr_path);
     cmd_append(&cmd, "-B", BUILD_DIR"/wamr");
@@ -172,6 +178,12 @@ static bool f_check(void)
     Cmd cmd = {0};
 
     SourcesList sources = {0};
+
+    if ( !program_exsists_on_path("clang-tidy") )
+    {
+        nob_log( WARNING, "clang-tidy is not present in your system: static check is skipped");
+        return true;
+    }
 
     cmd_append(&cmd, "clang-tidy");
     cmd_append(&cmd, "--warnings-as-errors=*");

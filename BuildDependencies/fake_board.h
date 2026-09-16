@@ -36,9 +36,23 @@ bool f_build_fakeboard(bool verbose, const char* path_main)
     {
         if ( !file_exists(WASI_SDK_NAME".tar.gz") )
         {
+            if ( !program_exsists_on_path("wget") )
+            {
+                nob_log( ERROR, "wget is not present in your system: abort");
+                res = false;
+                goto end;
+            }
+
             cmd_append(&cmd, "wget", WASI_SDK_MIRROR);
             cmd_append(&cmd, "-O", WASI_SDK_TAR);
             if ( !(res = cmd_run(&cmd)) ) goto end;
+        }
+
+        if ( !program_exsists_on_path("tar") )
+        {
+            nob_log( ERROR, "tar is not present in your system: abort");
+            res = false;
+            goto end;
         }
 
         cmd_append(&cmd, "tar");
@@ -49,6 +63,13 @@ bool f_build_fakeboard(bool verbose, const char* path_main)
     if ( !file_exists(THIRDPARTY"/wamr/wasm-micro-runtime/wamr-compiler/build/wamrc") )
     {
         bool build_ok = false;
+
+        if ( !program_exsists_on_path("git") )
+        {
+            nob_log( ERROR, "git is not present in your system: abort");
+            res = false;
+            goto end;
+        }
 
         cmd_append(&cmd, "git");
         cmd_append(&cmd, "-C", THIRDPARTY"/wamr/wasm-micro-runtime");

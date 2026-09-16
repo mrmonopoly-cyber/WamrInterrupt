@@ -60,9 +60,10 @@ ArrayViewString default_linker_opts(void);
 ArrayViewString default_include_path_opts(void);
 ArrayViewGDef default_global_defs_opts(void);
 
-
 void apply_all_defualt_compile_opts(Cmd* cmd);
 void apply_all_defualt_linker_opts(Cmd* cmd);
+
+bool program_exsists_on_path(const char* program_name);
 
 //================================implementation================================================
 
@@ -116,6 +117,21 @@ void apply_all_defualt_linker_opts(Cmd* cmd)
         if(opt) cmd_append(cmd, opt);
     }
 
+}
+
+bool program_exsists_on_path(const char* program_name)
+{
+    bool res=false;
+    Cmd cmd = {0};
+
+    cmd_append(&cmd, "bash");
+    cmd_append(&cmd, "-c");
+    cmd_append(&cmd, temp_sprintf("command -v %s", program_name));
+
+    res = cmd_run(&cmd);
+
+    cmd_free(cmd);
+    return res;
 }
 
 ArrayViewString default_src_dir_opts(void)
