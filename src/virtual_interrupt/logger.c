@@ -64,6 +64,8 @@ void vi_default_log_handler(VILoggerLevel level, const char* who, const char* ms
 {
     if ( level < vi_minimal_log_level ) return;
 
+    if ( !vi__log_file ) return;
+
     const char* prefix = NULL;
     char str_time[52] = {0};
     struct timespec ts = {0};
@@ -104,8 +106,6 @@ void vi_default_log_handler(VILoggerLevel level, const char* who, const char* ms
             }
             break;
     }
-
-    assert(vi__log_file);
 
     fprintf(vi__log_file, "%s %s.%03zu <=> %s: %s\n", prefix, str_time, milliseconds, who, msg);
     fflush(vi__log_file);

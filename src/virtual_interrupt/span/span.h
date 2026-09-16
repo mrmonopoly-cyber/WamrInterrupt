@@ -221,14 +221,17 @@ void __span_destroy(const struct __SpanCommon* const restrict span)
 #endif // SPAN_IMPLEMENTATION
 
 //===========================================tests=============================================
-
-#if defined(ENABLE_TESTS) && !defined(SPAN_TESTS)
+#ifdef ENABLE_TESTS
+#ifndef SPAN_TESTS
 #define SPAN_TESTS
+
 #include <stdio.h>
 #include <stdint.h>
 
+#undef printf
+
 __attribute__((__constructor__))
-void test_span()
+static inline void test_span()
 {
     typedef SPAN_TEMPLATE(uintptr_t) SpanUintPtr;
 
@@ -254,4 +257,5 @@ void test_span()
 
     span_destroy(&span);
 }
+#endif
 #endif

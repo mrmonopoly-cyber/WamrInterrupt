@@ -106,7 +106,7 @@ void spscq_test()
 
     SPSCQ_Test sd;
     const uint8_t data_push[SPSCQ_EXTRACT_CAP(&sd)] = {21, 42};
-    uint8_t data_pop[SPSCQ_EXTRACT_CAP(&sd)] = {};
+    uint8_t data_pop[SPSCQ_EXTRACT_CAP(&sd)] = {0};
 
     printf("running test: %s\n", __func__);
 
