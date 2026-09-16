@@ -46,6 +46,8 @@ static inline void _vi_clear_wamr_exception(void);
 static inline VIError _vi_set_signal(VISignals signal, int val);
 static inline VISignals _vi_get_signal(VISignals signal);
 static inline const char* _vi_get_signal_name(VISignals signal);
+static inline VIError _vi_enable_signal(VISignals signal);
+static inline VIError _vi_disable_all_signals(void);
 
 
 //=============================================implementation==================================
@@ -138,4 +140,40 @@ static inline const char* _vi_get_signal_name(VISignals signal)
     }
 
     assert(0 && "unreachable");
+}
+
+static inline VIError _vi_enable_signal(VISignals signal)
+{
+    sigset_t set;
+
+    if ( signal >= VISignals_Count )
+    {
+        return VIError_InvalidInput;
+    }
+
+    sigemptyset(&set);
+    sigaddset(&set, _vi_get_signal(signal));
+
+    if ( pthread_sigmask(SIG_UNBLOCK, &set, NULL) < 0 )
+    {
+        _vi_set_errno(errno);
+        return VIError_Libc;
+    }
+
+    return VIError_None;
+}
+
+static inline VIError _vi_disable_all_signals(void)
+{
+    sigset_t set;
+
+    sigfillset(&set);
+
+    if ( pthread_sigmask(SIG_BLOCK, &set, NULL) < 0 )
+    {
+        _vi_set_errno(errno);
+        return VIError_Libc;
+    }
+
+    return VIError_None;
 }

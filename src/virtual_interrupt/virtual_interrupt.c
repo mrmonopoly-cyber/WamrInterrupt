@@ -97,8 +97,6 @@ VIError vidispatcher_init_full(
     {
         const int sig_suspend = conf.suspend_signal;
         const int sig_resume = conf.resume_signal;
-        sigset_t set;
-        sigemptyset(&set);
 
         if ( (res = _vi_set_signal(VISignals_Suspend, sig_suspend)) != VIError_None )
         {
@@ -124,9 +122,7 @@ VIError vidispatcher_init_full(
             goto end;
         }
 
-        sigaddset(&set, sig_resume);
-        sigaddset(&set, sig_suspend);
-        if ( pthread_sigmask(SIG_BLOCK, &set, NULL) < 0 )
+        if ( _vi_disable_all_signals() != VIError_None )
         {
             res =VIError_Libc;
             _vi_set_errno(errno);
@@ -252,13 +248,16 @@ VIError vidispatcher_start(VIDispatcher* const restrict dispatcher)
 VIError vidispatcher_trigger_interrupt(VIDispatcher* const restrict dispatcher, const IrqLine line)
 {
     bool spsc_op_ok = false;
+    char log_buffer[64] = {0};
 
     if ( !dispatcher || line >= dispatcher->n_funcs ) return VIError_InvalidInput;
 
     spscq_push(&dispatcher->channel_ready_ureq, line, &spsc_op_ok);
     if ( !spsc_op_ok ) return VIError_Queue;
 
+    log("user triggered new interrupt on line: %zu", line);
     vi_dispatcher_status_signal(&dispatcher->dispatcher);
+
 
     return VIError_None;
 }
@@ -335,11 +334,15 @@ start_dispatcher_loop:
                     _vi_get_wamr_exception()
                   );
             vi_worker_status_set_working_mode(&dispatcher->dispatcher.base, WorkerStatus_Suspended);
+            _vi_enable_signal(VISignals_Suspend);
+            _vi_enable_signal(VISignals_Resume);
             vi_worker_status_self_suspend();
             vi_worker_status_set_working_mode(&dispatcher->dispatcher.base, WorkerStatus_Working);
             vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
                     "VIDispatcher: dispatcher woke up");
         }
+
+        _vi_disable_all_signals();
 
         atomic_fetch_sub(&dispatcher->dispatcher.n_requests, 1);
 

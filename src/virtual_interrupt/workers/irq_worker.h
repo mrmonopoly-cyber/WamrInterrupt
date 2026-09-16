@@ -14,6 +14,7 @@
 #include "../span/span.h"
 
 #define log(...) vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer), __VA_ARGS__)
+#define log_warn(...) vi_log(VILoggerLevel_Warning, log_buffer, sizeof(log_buffer), __VA_ARGS__)
 #define log_err(...) vi_log(VILoggerLevel_Error, log_buffer, sizeof(log_buffer), __VA_ARGS__)
 
 typedef wasm_function_inst_t IrqFuncHandler;
@@ -147,9 +148,8 @@ static void* _th_irq_worker(void* arg)
 
     VIIrqWorkerStatus* status = th_arg.status;
     wasm_module_inst_t module_inst = th_arg.module_inst;
-    sigset_t set = {0};
-    int err;
     char log_buffer[128] = {0};
+    bool fail = false;
 
 //========================================init=================================================
     wasm_runtime_init_thread_env();
@@ -158,7 +158,6 @@ static void* _th_irq_worker(void* arg)
     if( !module_inst )
     {
         res = VIError_InvalidInput;
-        atomic_store(th_arg.out, res);
         goto end;
     }
 
@@ -166,21 +165,17 @@ static void* _th_irq_worker(void* arg)
     if ( !status->th_exec_env )
     {
         res = VIError_WAMR;
-        atomic_store(th_arg.out, res);
+        fail = true;
         goto end;
     }
 
-    sigemptyset(&set);
-    sigaddset(&set, _vi_get_signal(VISignals_Suspend));
-    if ( ( err =pthread_sigmask(SIG_UNBLOCK, &set, NULL) ) < 0 )
+    if ( (res = _vi_enable_signal(VISignals_Suspend)) != VIError_None )
     {
-        res = VIError_Libc;
-        _vi_set_errno(err);
-        atomic_store(th_arg.out, res);
+        fail = true;
         goto end;
     }
 
-    atomic_store(th_arg.out, VIError_None);
+    atomic_store(th_arg.out, res);
 
 //=======================================logic=================================================
     while( 1 )
@@ -198,14 +193,21 @@ static void* _th_irq_worker(void* arg)
 
         size_t func_index = atomic_load(&status->func_index);
 
-        assert(status->p_funcs);
-
         log("VIWorker: calling func: %zu", func_index);
         vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Working);
-        if ( !wasm_runtime_call_wasm(status->th_exec_env, status->p_funcs[func_index], 0, NULL) )
+
+        if ( status->p_funcs && status->p_funcs[func_index] )
         {
-            _vi_set_wamr_exception(module_inst);
+            if ( !wasm_runtime_call_wasm(status->th_exec_env, status->p_funcs[func_index], 0, NULL) )
+            {
+                _vi_set_wamr_exception(module_inst);
+            }
         }
+        else
+        {
+            log_warn("VIWorker: calling unset irq handler %zu. Skipping", func_index);
+        }
+
         log("VIWorker: finshed func: %zu", func_index);
 
         vi_dispatcher_status_signal(th_arg.status->p_dispatcher);
@@ -216,6 +218,10 @@ static void* _th_irq_worker(void* arg)
 
 //=========================================end==================================================
 end:
+    if ( fail )
+    {
+        atomic_store(th_arg.out, res);
+    }
     pthread_cleanup_pop(true);
     return (void*) res;
 }

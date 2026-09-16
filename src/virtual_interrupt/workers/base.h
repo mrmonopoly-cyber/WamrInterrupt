@@ -32,6 +32,27 @@ static inline VIError vi_worker_status_init(
         VIWorkerStatus* const restrict status,
         void* (*worker_fun)(void* arg),
         void* arg
+        );
+
+static inline void vi_worker_status_suspend(VIWorkerStatus* const restrict status);
+static inline void vi_worker_status_resume(VIWorkerStatus* const restrict status);
+
+static inline void vi_worker_status_set_working_mode(
+        VIWorkerStatus* const restrict status,
+        WorkerStatus wc);
+static inline WorkerStatus vi_worker_status_get_working_mode( VIWorkerStatus* const restrict status);
+
+static inline VIError vi_worker_status_signal(VIWorkerStatus* const restrict status);
+static inline VIError vi_worker_status_signal(VIWorkerStatus* const restrict status);
+
+static inline void vi_worker_status_destroy(VIWorkerStatus* const restrict status);
+
+//====================================implementation============================================
+
+static inline VIError vi_worker_status_init(
+        VIWorkerStatus* const restrict status,
+        void* (*worker_fun)(void* arg),
+        void* arg
         )
 {
     assert(status && worker_fun);

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <assert.h>
-#include <signal.h>
 #include <stdatomic.h>
 #include <unistd.h>
 
@@ -77,6 +76,7 @@ static inline void vi_main_logic_suspend(VIMainLogicStatus* const restrict statu
     vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
             "VIDispatcher: suspending main thread");
     vi_worker_status_suspend(&status->base);
+    vi_worker_status_set_working_mode(&status->base, WorkerStatus_Suspended);
 }
 
 static inline void vi_main_logic_resume(VIMainLogicStatus* const restrict status)
@@ -88,6 +88,7 @@ static inline void vi_main_logic_resume(VIMainLogicStatus* const restrict status
     vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
             "VIDispatcher: resuming main thread");
     vi_worker_status_resume(&status->base);
+    vi_worker_status_set_working_mode(&status->base, WorkerStatus_Working);
 }
 
 static inline WorkerStatus vi_main_logic_get_mode(VIMainLogicStatus* const restrict status)
@@ -125,9 +126,8 @@ static void* _th_main_thread(void* arg)
 
     wasm_module_inst_t module_inst = th_arg.module_inst;
     wasm_exec_env_t th_exec_env = {0};
-    sigset_t set = {0};
-    int err;
     char log_buffer[128] = {0};
+    bool fail = false;
 
     //====================================init=================================================
     pthread_cleanup_push(_th_main_thread_cleanup, &th_exec_env);
@@ -136,7 +136,7 @@ static void* _th_main_thread(void* arg)
     if( !module_inst )
     {
         res = VIError_InvalidInput;
-        atomic_store(th_arg.out, res);
+        fail = true;
         goto end;
     }
 
@@ -144,20 +144,17 @@ static void* _th_main_thread(void* arg)
     if ( !th_exec_env )
     {
         res = VIError_WAMR;
-        atomic_store(th_arg.out, res);
+        fail = true;
         goto end;
     }
 
-    sigemptyset(&set);
-    sigaddset(&set, _vi_get_signal(VISignals_Suspend));
-    if ( ( err =pthread_sigmask(SIG_UNBLOCK, &set, NULL) ) < 0 )
+    if ( (res = _vi_enable_signal(VISignals_Suspend)) != VIError_None )
     {
-        res = VIError_Libc;
-        _vi_set_errno(err);
-        atomic_store(th_arg.out, res);
+        fail = true;
         goto end;
     }
-    atomic_store(th_arg.out, VIError_None);
+
+    atomic_store(th_arg.out, res);
 
     vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer), "VIMainLogic: suspending");
     vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Suspended);
@@ -181,7 +178,10 @@ static void* _th_main_thread(void* arg)
 
 //=======================================end==================================================
 end:
-    vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Dead);
+    if ( fail )
+    {
+        atomic_store(th_arg.out, res);
+    }
     pthread_cleanup_pop(true);
     return (void*) res;
 }
