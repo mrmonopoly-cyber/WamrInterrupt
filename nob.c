@@ -20,7 +20,7 @@ typedef struct
     size_t capacity;
 }SourcesList;
 
-static bool f_build_wamr(void)
+static bool f_build_wamr(Procs* procs)
 {
     static char wamr_root_dir[128] = {0};
 
@@ -79,7 +79,7 @@ static bool f_build_wamr(void)
 
     if ( args.verbose ) cmd_append(&cmd, "--verbose");
 
-    if ( !( res = cmd_run(&cmd) ) ) goto end;
+    if ( !( res = cmd_run(&cmd, .async = procs) ) ) goto end;
 
 end:
     cmd_free(cmd);
@@ -92,6 +92,7 @@ static bool f_compile(Walk_Entry entry)
     Cmd cmd = {0};
     const char* name = temp_file_name(entry.path);
     const char* suffix = name + strlen(name) - 2;
+    Procs *procs = entry.data;
 
     if(entry.type == FILE_REGULAR && !strcmp(suffix, ".c"))
     {
@@ -116,7 +117,7 @@ static bool f_compile(Walk_Entry entry)
 
         cmd_append(&cmd, entry.path);
 
-        res = cmd_run(&cmd);
+        res = cmd_run(&cmd, .async = procs);
 
     }
 
@@ -272,8 +273,9 @@ int main(int argc, char **argv)
 
     if( args.build || args.run )
     {
+        Procs procs = {0};
         //wamr
-        if(!f_build_wamr())
+        if( !f_build_wamr(&procs) )
         {
             nob_log(ERROR, "failed building wamr");
             return 1;
@@ -291,13 +293,15 @@ int main(int argc, char **argv)
             if(dir)
             {
                 nob_log(INFO, "compiling sources in src: %s", dir);
-                if(!walk_dir(dir, f_compile))
+                if(!walk_dir(dir, f_compile, .data = &procs))
                 {
                     nob_log(ERROR, "failed compiling sources in %s", dir);
                     return 1;
                 }
             }
         }
+
+        procs_flush(&procs);
 
         if(!f_link())
         {
