@@ -1,6 +1,9 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#define VI_OLIB_BASE_NAME "virtual_interrupt"
+#define VI_OLIB_NAME "lib"VI_OLIB_BASE_NAME
+
 #ifndef VINT_TYPES
 #define VINT_TYPES
 typedef struct
@@ -9,9 +12,16 @@ typedef struct
     size_t count;
     size_t capacity;
 }SourcesList;
+
+typedef enum
+{
+   VIOutputFormat_StaticLib,
+   VIOutputFormat_DynamicLib,
+
+}VIOutputFormat;
 #endif // !VINT_TYPES
 
-bool f_build_virtual_interrupt(bool verbose, bool test);
+bool f_build_virtual_interrupt(bool verbose, bool test, VIOutputFormat format);
 
 #ifdef VINT_IMPLEMENTATION
 #include "defs.h"
@@ -27,10 +37,11 @@ typedef struct
 static bool f_compile(Walk_Entry entry);
 static bool f_check(void);
 static bool _f_check_append_sources(Walk_Entry entry);
-static bool f_link(void);
+static bool f_link(VIOutputFormat format);
 
-bool f_build_virtual_interrupt(bool verbose, bool test)
+bool f_build_virtual_interrupt(bool verbose, bool test, VIOutputFormat format)
 {
+    bool res=false;
     Procs procs = {0};
     FCompileArgs args=
     {
@@ -38,16 +49,14 @@ bool f_build_virtual_interrupt(bool verbose, bool test)
         .test = test,
     };
     //wamr
-    if( !f_build_wamr(verbose, &procs) )
+    if( !(f_build_wamr(verbose, &procs)) )
     {
-        nob_log(ERROR, "failed building wamr");
-        return 1;
+        goto end;
     }
 
-    if ( !f_check() )
+    if ( !(res = f_check()) )
     {
-        nob_log(ERROR, "failed checking sources");
-        return 1;
+        goto end;
     }
 
     //source directories
@@ -56,23 +65,22 @@ bool f_build_virtual_interrupt(bool verbose, bool test)
         if(dir)
         {
             nob_log(INFO, "compiling sources in src: %s", dir);
-            if(!walk_dir(dir, f_compile, .data = &args))
+            if( !(res=walk_dir(dir, f_compile, .data = &args)) )
             {
-                nob_log(ERROR, "failed compiling sources in %s", dir);
-                return 1;
+                goto end;
             }
         }
     }
 
     procs_flush(&procs);
 
-    if(!f_link())
+    if( !(res=f_link(format)) )
     {
-        nob_log(ERROR, "failed liking");
-        return 1;
+        goto end;
     }
 
-    return 0;
+end:
+    return res;
 }
 
 static bool f_check(void)
@@ -140,6 +148,7 @@ static bool f_compile(Walk_Entry entry)
 
         cmd_append(&cmd, CC);
         apply_all_defualt_compile_opts(&cmd);
+        cmd_append(&cmd, "-fPIC");
 
         if ( args->test )
         {
@@ -179,7 +188,7 @@ static bool _f_check_append_sources(Walk_Entry entry)
     return true;
 }
 
-static bool f_link(void)
+static bool f_link(VIOutputFormat format)
 {
     Dir_Entry dir = {0};
     Cmd cmd = {0};
@@ -187,10 +196,33 @@ static bool f_link(void)
 
     if(!dir_entry_open(BUILD_DIR, &dir)) return false;
 
-    cmd_append(&cmd, CC);
+    switch (format)
+    {
 
+        case VIOutputFormat_StaticLib:
+            {
+                if ( !(res = program_exsists_on_path("ar")) )
+                {
+                    nob_log( ERROR, "ar is not present in your PATH. abort" );
+                    goto end;
+                }
 
-    cmd_append(&cmd, "-o", O_FILE);
+                cmd_append(&cmd, "ar");
+                cmd_append(&cmd, "rcs");
+                cmd_append(&cmd, BUILD_DIR"/"VI_OLIB_NAME".a");
+            }
+            break;
+        case VIOutputFormat_DynamicLib:
+            {
+                cmd_append(&cmd, CC);
+                cmd_append(&cmd, "-o", BUILD_DIR"/"VI_OLIB_NAME".so");
+
+                apply_all_defualt_linker_opts(&cmd);
+                cmd_append(&cmd, "-shared");
+
+            }
+            break;
+    }
 
     while(dir_entry_next(&dir))
     {
@@ -202,10 +234,9 @@ static bool f_link(void)
         }
     }
 
-    apply_all_defualt_linker_opts(&cmd);
-
     res = cmd_run(&cmd);
 
+end:
     dir_entry_close(dir);
     cmd_free(cmd);
     return res;

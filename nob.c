@@ -61,7 +61,32 @@ int main(int argc, char **argv)
 
     if( args.build || args.run )
     {
-        f_build_virtual_interrupt(args.verbose, args.test);
+        Cmd cmd = {0};
+        const char* main_src = "src/launcher/main.c";
+        if ( !f_build_virtual_interrupt(args.verbose, args.test, VIOutputFormat_StaticLib) )
+        {
+            nob_log(ERROR, "failed building");
+            return 1;
+        }
+
+        if ( args.test )
+        {
+            const char* main_src = "./BuildDependencies/dummy_main.c";
+        }
+
+        cmd_append(&cmd, CC);
+        apply_all_defualt_compile_opts(&cmd);
+        cmd_append(&cmd, main_src);
+        apply_all_defualt_linker_opts(&cmd);
+        cmd_append(&cmd, "-o", O_FILE);
+        cmd_append(&cmd, "-L", BUILD_DIR);
+        cmd_append(&cmd, "-l", VI_OLIB_BASE_NAME);
+
+        if ( !cmd_run(&cmd) )
+        {
+            nob_log(ERROR, "failed building");
+            return 1;
+        }
     }
 
     if( args.run && !f_run(args.verbose, args.test) )
