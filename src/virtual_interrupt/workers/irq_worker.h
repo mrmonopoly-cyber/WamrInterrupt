@@ -13,9 +13,9 @@
 
 #include "../span/span.h"
 
-#define log(...) vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer), __VA_ARGS__)
-#define log_warn(...) vi_log(VILoggerLevel_Warning, log_buffer, sizeof(log_buffer), __VA_ARGS__)
-#define log_err(...) vi_log(VILoggerLevel_Error, log_buffer, sizeof(log_buffer), __VA_ARGS__)
+#define log(...) vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer), "Worker", __VA_ARGS__)
+#define log_warn(...) vi_log(VILoggerLevel_Warning, log_buffer, sizeof(log_buffer), "Worker", __VA_ARGS__)
+#define log_err(...) vi_log(VILoggerLevel_Error, log_buffer, sizeof(log_buffer), "Worker", __VA_ARGS__)
 
 typedef wasm_function_inst_t IrqFuncHandler;
 
@@ -138,7 +138,7 @@ static void _th_irq_workder_thread_cleanup(void* arg)
     wasm_runtime_destroy_thread_env();
 
     vi_worker_status_set_working_mode(&status->base, WorkerStatus_Dead);
-    log("VIWorker: dead");
+    log("dead");
 }
 
 static void* _th_irq_worker(void* arg)
@@ -187,13 +187,13 @@ static void* _th_irq_worker(void* arg)
 
         if ( !atomic_load(&th_arg.status->run) )
         {
-            log("VIWorker: received request to terminate execution");
+            log("received request to terminate execution");
             break;
         }
 
         size_t func_index = atomic_load(&status->func_index);
 
-        log("VIWorker: calling func: %zu", func_index);
+        log("calling func: %zu", func_index);
         vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Working);
 
         if ( status->p_funcs && status->p_funcs[func_index] )
@@ -205,10 +205,10 @@ static void* _th_irq_worker(void* arg)
         }
         else
         {
-            log_warn("VIWorker: calling unset irq handler %zu. Skipping", func_index);
+            log_warn("calling unset irq handler %zu. Skipping", func_index);
         }
 
-        log("VIWorker: finshed func: %zu", func_index);
+        log("finshed func: %zu", func_index);
 
         vi_dispatcher_status_signal(th_arg.status->p_dispatcher);
     }
@@ -227,4 +227,5 @@ end:
 }
 
 #undef log
+#undef log_warn
 #undef log_err

@@ -104,6 +104,10 @@ void __span_destroy(const struct __SpanCommon* const restrict span);
 
 #include "../logger.h"
 
+#define log(...) vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer), "span", __VA_ARGS__)
+#define log_warn(...) vi_log(VILoggerLevel_Warning, log_buffer, sizeof(log_buffer), "span", __VA_ARGS__)
+#define log_err(...) vi_log(VILoggerLevel_Error, log_buffer, sizeof(log_buffer), "span", __VA_ARGS__)
+
 const char* span_err_to_str(const SpanError err)
 {
     switch (err)
@@ -196,19 +200,23 @@ SpanError __span_get(
 
 void __span_destroy(const struct __SpanCommon* const restrict span)
 {
-    char buffer[64] = {0};
+    char log_buffer[64] = {0};
 
     if( !span || !span->chunks ) return;
 
     for (size_t i=0; i< span->cap; i++)
     {
-        vi_log(VILoggerLevel_Info, buffer, sizeof(buffer), "span free chunk: %zu", i);
+        log("span free chunk: %zu", i);
         if( span->chunks[i] ) free(span->chunks[i]);
     }
 
-    vi_log(VILoggerLevel_Info, buffer, sizeof(buffer), "span free chunk root");
+    log("span free chunk root");
     free(span->chunks);
 }
+
+#undef log
+#undef log_warn
+#undef log_err
 
 #endif // SPAN_IMPLEMENTATION
 

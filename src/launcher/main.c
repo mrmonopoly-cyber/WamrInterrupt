@@ -33,8 +33,8 @@ static char error_buf[256] = {0};
 #define GOTO_END_AND_CUSTOM_ERROR(...) GOTO_END_AND_CUSTOM_ERROR_LINE(__LINE__, __VA_ARGS__) 
 
 #define printf(...) static_assert(0, "printf is not allowed use vi_log");
-#define log(...) vi_log(VILoggerLevel_Trace, log_buffer, sizeof(log_buffer), __VA_ARGS__)
-#define log_err(...) vi_log(VILoggerLevel_Error, log_buffer, sizeof(log_buffer), __VA_ARGS__)
+#define log(...) vi_log(VILoggerLevel_Trace, log_buffer, sizeof(log_buffer), "Launcher", __VA_ARGS__)
+#define log_err(...) vi_log(VILoggerLevel_Error, log_buffer, sizeof(log_buffer),"Launcher",  __VA_ARGS__)
 
 typedef struct
 {

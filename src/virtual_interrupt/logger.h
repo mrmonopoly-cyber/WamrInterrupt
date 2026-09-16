@@ -25,14 +25,15 @@ typedef enum
 
 extern VILoggerLevel vi_minimal_log_level;
 
-typedef void (VILogHandler) (VILoggerLevel level, const char* msg);
+typedef void (VILogHandler) (VILoggerLevel level, const char* who, const char* msg);
 
 VILOGGER_PREFIX void vi_log(
         VILoggerLevel level,
         char* buffer,
         size_t buffer_len,
+        const char *who,
         const char *fmt,
-        ...)VILOGGER_PRINTF_FORMAT(4, 5);
+        ...)VILOGGER_PRINTF_FORMAT(5, 6);
 
 void vi_log_file_init(const char* base_path);
 
@@ -41,4 +42,4 @@ VILOGGER_PREFIX VILogHandler* vi_get_log_handler(void);
 
 VILOGGER_PREFIX const char* vi_get_log_file_name(void);
 
-void vi_default_log_handler(VILoggerLevel level, const char* msg);
+void vi_default_log_handler(VILoggerLevel level, const char* who, const char* msg);

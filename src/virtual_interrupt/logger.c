@@ -27,6 +27,7 @@ VILOGGER_PREFIX void vi_log(
         VILoggerLevel level,
         char* buffer,
         size_t buffer_len,
+        const char *who,
         const char *fmt,
         ...)
 {
@@ -34,7 +35,7 @@ VILOGGER_PREFIX void vi_log(
     va_start(args, fmt);
     vsnprintf(buffer, buffer_len, fmt, args);
     va_end(args);
-    vi__log_handler(level, buffer);
+    vi__log_handler(level, who, buffer);
 }
 
 void vi_log_file_init(const char* base_path)
@@ -59,7 +60,7 @@ void vi_log_file_init(const char* base_path)
     }
 }
 
-void vi_default_log_handler(VILoggerLevel level, const char* msg)
+void vi_default_log_handler(VILoggerLevel level, const char* who, const char* msg)
 {
     if ( level < vi_minimal_log_level ) return;
 
@@ -106,6 +107,6 @@ void vi_default_log_handler(VILoggerLevel level, const char* msg)
 
     assert(vi__log_file);
 
-    fprintf(vi__log_file, "%s %s.%03zu: %s\n", prefix, str_time, milliseconds, msg);
+    fprintf(vi__log_file, "%s %s.%03zu <=> %s: %s\n", prefix, str_time, milliseconds, who, msg);
     fflush(vi__log_file);
 }

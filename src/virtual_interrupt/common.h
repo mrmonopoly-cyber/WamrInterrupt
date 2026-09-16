@@ -52,6 +52,10 @@ static inline VIError _vi_disable_all_signals(void);
 
 //=============================================implementation==================================
 
+#define log(...) vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer), "Common", __VA_ARGS__)
+#define log_warn(...) vi_log(VILoggerLevel_Warning, log_buffer, sizeof(log_buffer), "Common", __VA_ARGS__)
+#define log_err(...) vi_log(VILoggerLevel_Error, log_buffer, sizeof(log_buffer), "Common", __VA_ARGS__)
+
 static inline void _vi_set_errno(int error)
 {
     extern int VI_ERROR_ERRNO;
@@ -116,8 +120,7 @@ static inline VIError _vi_set_signal(VISignals signal, int val)
         }
     }
 
-    vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-            "VICommon: setting signal %s: %d", _vi_get_signal_name(signal), val);
+    log("setting signal %s: %d", _vi_get_signal_name(signal), val);
     VI_SIGNALS[signal] = val;
 
     return VIError_None;
@@ -177,3 +180,7 @@ static inline VIError _vi_disable_all_signals(void)
 
     return VIError_None;
 }
+
+#undef log
+#undef log_warn
+#undef log_err

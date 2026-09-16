@@ -16,10 +16,7 @@
 
 #include "logger.h"
 #include "minheap/minheap.h"
-#include "workers/base.h"
-#include "workers/dispatcher.h"
-#include "workers/irq_worker.h"
-#include "workers/main_logic.h"
+#include "workers/workers.h"
 
 #define SPAN_IMPLEMENTATION
 #include "span/span.h"
@@ -34,8 +31,9 @@
 #define FOR_EACH_IRQ_WORKER_RANGE(NAME, MAX) \
     for (size_t NAME = 1; i <= (MAX); i++)
 
-#define log(...) vi_log(VILoggerLevel_Trace, log_buffer, sizeof(log_buffer), __VA_ARGS__)
-#define log_err(...) vi_log(VILoggerLevel_Error, log_buffer, sizeof(log_buffer), __VA_ARGS__)
+#define log(...) vi_log(VILoggerLevel_Trace, log_buffer, sizeof(log_buffer), "Dispatcher", __VA_ARGS__)
+#define log_warn(...) vi_log(VILoggerLevel_Warning, log_buffer, sizeof(log_buffer), "Dispatcher", __VA_ARGS__)
+#define log_err(...) vi_log(VILoggerLevel_Error, log_buffer, sizeof(log_buffer),"Dispatcher",  __VA_ARGS__)
 
 //=====================================types=====================================================
 
@@ -153,7 +151,7 @@ VIError vidispatcher_init_full(
 
     for(size_t i=1; i<=depth; i++)
     {
-        vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer), "VIDispatcher: init worker: %zu", i);
+        log("init worker: %zu", i);
         VIIrqWorkerStatus* worker = _get_worker(dispatcher, i);
         assert( worker );
 
@@ -238,8 +236,7 @@ VIError vidispatcher_start(VIDispatcher* const restrict dispatcher)
         return VIError_Libc;
     }
 
-    vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-            "VIDispatcher: starting dispatcher");
+    log("starting dispatcher");
     vi_main_logic_resume(&dispatcher->main_fun_status);
 
     return VIError_None;
@@ -268,10 +265,10 @@ void vidispatcher_destroy(VIDispatcher* const restrict dispatcher)
 
     if( dispatcher )
     {
-        vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer), "destroying main thread");
+        log("destroying main thread");
         vi_main_logic_destroy(&dispatcher->main_fun_status);
 
-        vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer), "destroying dispatcher");
+        log("destroying dispatcher");
         vi_dispatcher_status_destroy(&dispatcher->dispatcher);
 
         FOR_EACH_IRQ_WORKER_INDEX(i, &dispatcher->workers)
@@ -281,8 +278,7 @@ void vidispatcher_destroy(VIDispatcher* const restrict dispatcher)
 
             if ( w_status != WorkerStatus_Init && w_status != WorkerStatus_Dead )
             {
-                vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-                        "destroying workder: %zu", i);
+                log("destroying workder: %zu", i);
                 vi_irq_worker_destroy(worker);
             }
         }
@@ -326,20 +322,18 @@ start_dispatcher_loop:
         //waiting for something to do
         if ( atomic_load(&dispatcher->dispatcher.n_requests) == 0 )
         {
-            vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-                    "VIDispatcher: waiting for something to do: "
-                    "read: %ld, write: %ld, wamr_exception:--%s--",
+            log(
+                    "waiting for something to do: read: %ld, write: %ld, wamr_exception:--%s--",
                     atomic_load(&dispatcher->channel_ready_ureq.read),
                     atomic_load(&dispatcher->channel_ready_ureq.write),
                     _vi_get_wamr_exception()
-                  );
+               );
             vi_worker_status_set_working_mode(&dispatcher->dispatcher.base, WorkerStatus_Suspended);
             _vi_enable_signal(VISignals_Suspend);
             _vi_enable_signal(VISignals_Resume);
             vi_worker_status_self_suspend();
             vi_worker_status_set_working_mode(&dispatcher->dispatcher.base, WorkerStatus_Working);
-            vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-                    "VIDispatcher: dispatcher woke up");
+            log("dispatcher woke up");
         }
 
         _vi_disable_all_signals();
@@ -348,8 +342,7 @@ start_dispatcher_loop:
 
         if ( !atomic_load(&dispatcher->dispatcher.run) )
         {
-            vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-                    "VIDispatcher: received termination request");
+            log("received termination request");
             break;
         }
 
@@ -357,8 +350,7 @@ start_dispatcher_loop:
         //old interrupt ended, unwinding execution to find suspended interrupt if it exists to
         //resume it
         bool worker_finish  = false;
-        vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-                "VIDispatcher: checking if worker finished: current depth: %zu",
+        log("checking if worker finished: current depth: %zu",
                 dispatcher->executing_worker);
         while( dispatcher->executing_worker )
         {
@@ -370,8 +362,7 @@ start_dispatcher_loop:
             {
                 dispatcher->executing_worker--;
                 worker_finish  = true;
-                vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-                        "VIDispatcher: doing the stuck unwinding: current depth %zu",
+                log("doing the stuck unwinding: current depth %zu",
                         dispatcher->executing_worker);
             }
             else if( worker_finish ) //resume stopped worker
@@ -388,8 +379,7 @@ start_dispatcher_loop:
                     VIIrqWorkerStatus* new_worker;
                     bool pop_ok = false;
 
-                    vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-                            "VIDispatcher: starting new irq in waiting queue: %zu", ureq_pop);
+                    log("starting new irq in waiting queue: %zu", ureq_pop);
 
                     minheap_pop(&dispatcher->minheap_ureq, &ureq_pop, &pop_ok);
                     assert( pop_ok && ureq_pop == ureq_peek );
@@ -402,8 +392,7 @@ start_dispatcher_loop:
                 }
                 else
                 {
-                    vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-                            "VIDispatcher: resuming suspended worker: %zu",
+                    log("resuming suspended worker: %zu",
                             dispatcher->executing_worker);
                     vi_irq_worker_resume(old_worker);
                 }
@@ -426,8 +415,7 @@ start_dispatcher_loop:
         old_worker = _get_active_worker(dispatcher);
         if(spscq_op_ok && ( !old_worker || (size_t) ureq >= old_worker->func_index ) )
         {
-            vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-                    "VIDispatcher: user give new irq req: %zu", ureq);
+            log("user give new irq req: %zu", ureq);
 
             new_worker = _prepare_new_worker(dispatcher, ureq);
             assert(new_worker);
@@ -438,24 +426,20 @@ start_dispatcher_loop:
             //stop current worker (i)
             if( old_worker )
             {
-                vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-                        "VIDispatcher: suspending old worker: %zu",
+                log("suspending old worker: %zu",
                         dispatcher->executing_worker - 1);
                 vi_irq_worker_suspend(old_worker);
             }
 
             //start new thread (i+1)
-            vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-                    "VIDispatcher: starting new worker: %zu", dispatcher->executing_worker);
+            log("starting new worker: %zu", dispatcher->executing_worker);
             vi_irq_worker_resume(new_worker);
         }
         //ELSE IF the ureq < req that is already executing THAN save it on a wait queue for later
         else if ( spscq_op_ok )
         {
             bool minheap_push_ok = false;
-            vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-                    "VIDispatcher: user request %zu, has lower prority, saving on wait queue",
-                    ureq);
+            log("user request %zu, has lower prority, saving on wait queue", ureq);
 
             assert(ureq < old_worker->func_index);
 
@@ -469,8 +453,7 @@ start_dispatcher_loop:
         {
             bool pop_ok = false;
 
-            vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-                    "VIDispatcher: no worker active popping from wait queue: %zu", ureq);
+            log("no worker active popping from wait queue: %zu", ureq);
             minheap_pop(&dispatcher->minheap_ureq, &ureq, &pop_ok);
 
             //pop MUST succeed since we just checked if the wait queue has elements in it 
@@ -489,8 +472,7 @@ start_dispatcher_loop:
                   );
 
             //start thread (1)
-            vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-                    "VIDispatcher: starting new worker from wait queue. (Req: %zu, Worker: %zu)",
+            log("starting new worker from wait queue. (Req: %zu, Worker: %zu)",
                     ureq, dispatcher->executing_worker);
             vi_irq_worker_resume(new_worker);
         }
@@ -507,8 +489,7 @@ start_dispatcher_loop:
                 vi_main_logic_get_mode(&dispatcher->main_fun_status) == WorkerStatus_Suspended
            )
         {
-            vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-                    "VIDispatcher: no worker is running");
+            log("no worker is running");
             vi_main_logic_resume(&dispatcher->main_fun_status);
         }
 
@@ -516,7 +497,7 @@ start_dispatcher_loop:
         if ( _vi_exists_wamr_exception() )
         {
             //TODO: logger
-            fprintf(stderr, "thread error wamr call func: %s\n", _vi_get_wamr_exception());
+            log_err("thread error wamr call func: %s\n", _vi_get_wamr_exception());
             _vi_clear_wamr_exception();
         }
 
@@ -524,7 +505,7 @@ start_dispatcher_loop:
 
 //====================================end==================================================
     vi_worker_status_set_working_mode(&dispatcher->dispatcher.base, WorkerStatus_Dead);
-    vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer), "VIDispatcher: dead");
+    log("dead");
     return (void*) res;
 }
 
@@ -548,8 +529,7 @@ static inline VIIrqWorkerStatus* _prepare_new_worker(
 
         assert( new_stack_size && new_stack_size > d->executing_worker );
 
-        vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-                "VIDispatcher: reached stack limit, expanding to: %zu", new_stack_size);
+        log("reached stack limit, expanding to: %zu", new_stack_size);
         span_resize(&d->workers, new_stack_size, &span_out_status);
         assert( span_out_status == SpanError_None );
 
@@ -559,8 +539,7 @@ static inline VIIrqWorkerStatus* _prepare_new_worker(
             assert( worker );
 
             assert( d->module_inst );
-            vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer), 
-                    "VIDispatcher: init new worker: %zu", i);
+            log("init new worker: %zu", i);
             vi_error = vi_irq_worker_init(worker, &d->dispatcher, d->funcs, d->module_inst);
             assert(vi_error == VIError_None);
         }

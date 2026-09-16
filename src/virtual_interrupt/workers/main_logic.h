@@ -8,6 +8,14 @@
 #include "dispatcher.h"
 #include "wasm_export.h"
 
+//================================================macros=========================================
+
+#define log(...) vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer), "MainLogic", __VA_ARGS__)
+#define log_warn(...) vi_log(VILoggerLevel_Warning, log_buffer, sizeof(log_buffer), "MainLogic", __VA_ARGS__)
+#define log_err(...) vi_log(VILoggerLevel_Error, log_buffer, sizeof(log_buffer), "MainLogic", __VA_ARGS__)
+
+//================================================types==========================================
+
 typedef struct
 {
     VIWorkerStatus base;
@@ -73,8 +81,7 @@ static inline void vi_main_logic_suspend(VIMainLogicStatus* const restrict statu
 
     assert(status);
 
-    vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-            "VIDispatcher: suspending main thread");
+    log("suspending main thread");
     vi_worker_status_suspend(&status->base);
     vi_worker_status_set_working_mode(&status->base, WorkerStatus_Suspended);
 }
@@ -85,8 +92,7 @@ static inline void vi_main_logic_resume(VIMainLogicStatus* const restrict status
 
     assert(status);
 
-    vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-            "VIDispatcher: resuming main thread");
+    log("resuming main thread");
     vi_worker_status_resume(&status->base);
     vi_worker_status_set_working_mode(&status->base, WorkerStatus_Working);
 }
@@ -156,23 +162,22 @@ static void* _th_main_thread(void* arg)
 
     atomic_store(th_arg.out, res);
 
-    vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer), "VIMainLogic: suspending");
+    log("suspending");
     vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Suspended);
     vi_worker_status_self_suspend();
 
 //=======================================logic=================================================
-    vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-            "VIMainLogic: starting main");
+    log("VIMainLogic: starting main");
     vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Working);
     if ( wasm_runtime_call_wasm(th_exec_env, th_arg.main_f, 0, NULL) )
     {
         _vi_set_wamr_exception(module_inst);
+        log_err("error calling main function: %s", _vi_get_wamr_exception());
     }
 
     //INFO: if we reach here it means that the main has ended for any reason which is probably
     //an error unless the hole program ended
-    vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer),
-            "VIMainLogic: main ended");
+    log("VIMainLogic: main ended");
     vi_worker_status_signal(&th_arg.status->p_dispatcher_status->base);
     vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Done);
 
@@ -185,3 +190,7 @@ end:
     pthread_cleanup_pop(true);
     return (void*) res;
 }
+
+#undef log
+#undef log_warn
+#undef log_err
