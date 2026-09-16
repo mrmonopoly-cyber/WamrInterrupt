@@ -302,6 +302,11 @@ static void* _th_dispatcher(void* arg)
     assert(dispatcher);
     vi_worker_status_set_working_mode(&dispatcher->dispatcher.base, WorkerStatus_Working);
 
+    if ( _vi_disable_all_signals() != VIError_None )
+    {
+        log_err("failed to disable signals");
+    }
+
 //========================================logic=================================================
     while( true )
     {
@@ -328,13 +333,20 @@ start_dispatcher_loop:
             }
 
             vi_worker_status_self_suspend();
+
+            if ( _vi_disable_all_signals() != VIError_None )
+            {
+                log_err("failed to disable signals");
+            }
+
             vi_worker_status_set_working_mode(&dispatcher->dispatcher.base, WorkerStatus_Working);
             log("dispatcher woke up");
         }
 
-        if ( _vi_disable_all_signals() != VIError_None )
+        if ( atomic_load(&dispatcher->dispatcher.n_requests) == 0 )
         {
-            log_err("failed to disable signals");
+            log_err("INVARIANT NOT RESPECTED: n_requests == 0");
+            continue;
         }
 
         atomic_fetch_sub(&dispatcher->dispatcher.n_requests, 1);
