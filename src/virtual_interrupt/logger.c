@@ -107,4 +107,5 @@ void vi_default_log_handler(VILoggerLevel level, const char* msg)
     assert(vi__log_file);
 
     fprintf(vi__log_file, "%s %s.%03zu: %s\n", prefix, str_time, milliseconds, msg);
+    fflush(vi__log_file);
 }
