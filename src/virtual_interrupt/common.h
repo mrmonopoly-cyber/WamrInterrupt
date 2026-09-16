@@ -11,10 +11,16 @@
 
 //============================================macros============================================
 
+#ifndef VI_COMMON_PREFIX
+#define VI_COMMON_PREFIX static inline
+#endif // !VI_COMMON_PREFIX
+
 #define VI_ERROR_WAMR_NO_EXCEPTION  ""
 
 #define VI_DEFAULT_SIG_SUSPEND  SIGPOLL
 #define VI_DEFAULT_SIG_RESUME   SIGCONT
+
+#define VI_RESULT_TYPE __attribute__((warn_unused_result))
 
 //============================================types============================================
 
@@ -27,7 +33,6 @@ typedef enum __VirtualInterruptError
     VIError_Libc,           /* check errno */
 }VIError;
 
-
 typedef enum
 {
     VISignals_Suspend,
@@ -38,16 +43,17 @@ typedef enum
 
 //============================================declarations======================================
 
-static inline void _vi_set_errno(int error);
-static inline void _vi_set_wamr_exception(wasm_module_inst_t module_inst);
-static inline bool _vi_exists_wamr_exception(void);
-static inline const char* _vi_get_wamr_exception(void);
-static inline void _vi_clear_wamr_exception(void);
-static inline VIError _vi_set_signal(VISignals signal, int val);
-static inline VISignals _vi_get_signal(VISignals signal);
-static inline const char* _vi_get_signal_name(VISignals signal);
-static inline VIError _vi_enable_signal(VISignals signal);
-static inline VIError _vi_disable_all_signals(void);
+VI_COMMON_PREFIX void _vi_set_errno(int error);
+VI_COMMON_PREFIX void _vi_set_wamr_exception(wasm_module_inst_t module_inst);
+VI_COMMON_PREFIX bool _vi_exists_wamr_exception(void);
+VI_COMMON_PREFIX const char* _vi_get_wamr_exception(void);
+VI_COMMON_PREFIX void _vi_clear_wamr_exception(void);
+VI_COMMON_PREFIX VIError _vi_set_signal(VISignals signal, int val) VI_RESULT_TYPE;
+VI_COMMON_PREFIX VISignals _vi_get_signal(VISignals signal);
+VI_COMMON_PREFIX const char* _vi_get_signal_name(VISignals signal);
+VI_COMMON_PREFIX VIError _vi_enable_signal(VISignals signal) VI_RESULT_TYPE;
+VI_COMMON_PREFIX VIError _vi_disable_all_signals(void) VI_RESULT_TYPE;
+VI_COMMON_PREFIX const char* vi_error_to_str(const VIError err);
 
 
 //=============================================implementation==================================
@@ -56,7 +62,7 @@ static inline VIError _vi_disable_all_signals(void);
 #define log_warn(...) vi_log(VILoggerLevel_Warning, log_buffer, sizeof(log_buffer), "Common", __VA_ARGS__)
 #define log_err(...) vi_log(VILoggerLevel_Error, log_buffer, sizeof(log_buffer), "Common", __VA_ARGS__)
 
-static inline void _vi_set_errno(int error)
+VI_COMMON_PREFIX void _vi_set_errno(int error)
 {
     extern int VI_ERROR_ERRNO;
 
@@ -64,35 +70,35 @@ static inline void _vi_set_errno(int error)
     errno = error;
 }
 
-static inline void _vi_set_wamr_exception(wasm_module_inst_t module_inst)
+VI_COMMON_PREFIX void _vi_set_wamr_exception(wasm_module_inst_t module_inst)
 {
     extern const char* VI_ERROR_WAMR_EXCEPTION;
 
     VI_ERROR_WAMR_EXCEPTION = wasm_runtime_get_exception(module_inst);
 }
 
-static inline bool _vi_exists_wamr_exception(void)
+VI_COMMON_PREFIX bool _vi_exists_wamr_exception(void)
 {
     extern const char* VI_ERROR_WAMR_EXCEPTION;
 
     return strcmp(VI_ERROR_WAMR_EXCEPTION,VI_ERROR_WAMR_NO_EXCEPTION);
 }
 
-static inline const char* _vi_get_wamr_exception(void)
+VI_COMMON_PREFIX const char* _vi_get_wamr_exception(void)
 {
     extern const char* VI_ERROR_WAMR_EXCEPTION;
 
     return VI_ERROR_WAMR_EXCEPTION;
 }
 
-static inline void _vi_clear_wamr_exception(void)
+VI_COMMON_PREFIX void _vi_clear_wamr_exception(void)
 {
     extern const char* VI_ERROR_WAMR_EXCEPTION;
 
     VI_ERROR_WAMR_EXCEPTION = VI_ERROR_WAMR_NO_EXCEPTION;
 }
 
-static inline VIError _vi_set_signal(VISignals signal, int val)
+VI_COMMON_PREFIX VIError _vi_set_signal(VISignals signal, int val)
 {
     char log_buffer[64] = {0};
 
@@ -126,14 +132,14 @@ static inline VIError _vi_set_signal(VISignals signal, int val)
     return VIError_None;
 }
 
-static inline VISignals _vi_get_signal(VISignals signal)
+VI_COMMON_PREFIX VISignals _vi_get_signal(VISignals signal)
 {
     extern int VI_SIGNALS[VISignals_Count];
 
     return VI_SIGNALS[signal];
 }
 
-static inline const char* _vi_get_signal_name(VISignals signal)
+VI_COMMON_PREFIX const char* _vi_get_signal_name(VISignals signal)
 {
     switch (signal)
     {
@@ -145,7 +151,7 @@ static inline const char* _vi_get_signal_name(VISignals signal)
     assert(0 && "unreachable");
 }
 
-static inline VIError _vi_enable_signal(VISignals signal)
+VI_COMMON_PREFIX VIError _vi_enable_signal(VISignals signal)
 {
     sigset_t set;
 
@@ -166,7 +172,7 @@ static inline VIError _vi_enable_signal(VISignals signal)
     return VIError_None;
 }
 
-static inline VIError _vi_disable_all_signals(void)
+VI_COMMON_PREFIX VIError _vi_disable_all_signals(void)
 {
     sigset_t set;
 
@@ -179,6 +185,21 @@ static inline VIError _vi_disable_all_signals(void)
     }
 
     return VIError_None;
+}
+
+VI_COMMON_PREFIX const char* vi_error_to_str(const VIError err)
+{
+    extern int VI_ERROR_ERRNO;
+    switch (err)
+    {
+        case VIError_None:                  return "";
+        case VIError_InvalidInput:          return "invalid input";
+        case VIError_Queue:                 return "Internal Queue error: Full?";
+        case VIError_WAMR:                  return "wamr error";
+        case VIError_Libc:                  return "libc error";
+    }
+
+    assert(0 && "unreachable");
 }
 
 #undef log

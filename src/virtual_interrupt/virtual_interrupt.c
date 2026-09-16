@@ -222,6 +222,15 @@ VIError vidispatcher_start(VIDispatcher* const restrict dispatcher)
     }
 
     vi_worker_status_set_working_mode(&dispatcher->dispatcher.base, WorkerStatus_Init);
+    log("starting dispatcher");
+    vi_main_logic_resume(&dispatcher->main_fun_status);
+
+    while( vi_worker_status_get_working_mode(&dispatcher->main_fun_status.base) == WorkerStatus_Init )
+    {
+        log("%s waiting main thread start", __func__);
+        usleep(1000 * 1000);
+    }
+
     int err =  vi_dispatcher_status_init(&dispatcher->dispatcher, _th_dispatcher, dispatcher);
 
     while( vi_worker_status_get_working_mode(&dispatcher->dispatcher.base) == WorkerStatus_Init )
@@ -235,9 +244,6 @@ VIError vidispatcher_start(VIDispatcher* const restrict dispatcher)
         _vi_set_errno(err);
         return VIError_Libc;
     }
-
-    log("starting dispatcher");
-    vi_main_logic_resume(&dispatcher->main_fun_status);
 
     return VIError_None;
 }
@@ -253,10 +259,7 @@ VIError vidispatcher_trigger_interrupt(VIDispatcher* const restrict dispatcher, 
     if ( !spsc_op_ok ) return VIError_Queue;
 
     log("user triggered new interrupt on line: %zu", line);
-    vi_dispatcher_status_signal(&dispatcher->dispatcher);
-
-
-    return VIError_None;
+    return vi_dispatcher_status_signal(&dispatcher->dispatcher);
 }
 
 void vidispatcher_destroy(VIDispatcher* const restrict dispatcher)
@@ -288,21 +291,6 @@ void vidispatcher_destroy(VIDispatcher* const restrict dispatcher)
     }
 }
 
-const char* vi_error_to_str(const VIError err)
-{
-    extern int VI_ERROR_ERRNO;
-    switch (err)
-    {
-        case VIError_None:                  return "";
-        case VIError_InvalidInput:          return "invalid input";
-        case VIError_Queue:                 return "Internal Queue error: Full?";
-        case VIError_WAMR:                  return "wamr error";
-        case VIError_Libc:                  return "libc error";
-    }
-
-    assert(0 && "unreachable");
-}
-
 static void* _th_dispatcher(void* arg)
 {
     uintptr_t res = VIError_None;
@@ -329,14 +317,26 @@ start_dispatcher_loop:
                     _vi_get_wamr_exception()
                );
             vi_worker_status_set_working_mode(&dispatcher->dispatcher.base, WorkerStatus_Suspended);
-            _vi_enable_signal(VISignals_Suspend);
-            _vi_enable_signal(VISignals_Resume);
+
+            if ( _vi_enable_signal(VISignals_Suspend) != VIError_None )
+            {
+                log_err("error enabling signal: %s\n", _vi_get_signal_name(VISignals_Suspend));
+            }
+
+            if ( _vi_enable_signal(VISignals_Resume) != VIError_None )
+            {
+                log_err("error enabling signal: %s\n", _vi_get_signal_name(VISignals_Resume));
+            }
+
             vi_worker_status_self_suspend();
             vi_worker_status_set_working_mode(&dispatcher->dispatcher.base, WorkerStatus_Working);
             log("dispatcher woke up");
         }
 
-        _vi_disable_all_signals();
+        if ( _vi_disable_all_signals() != VIError_None )
+        {
+            log_err("failed to disable signals");
+        }
 
         atomic_fetch_sub(&dispatcher->dispatcher.n_requests, 1);
 
@@ -576,6 +576,11 @@ static inline VIIrqWorkerStatus* _get_worker(const VIDispatcher* const restrict 
     }
 
     return res;
+}
+
+const char* vidispatcher_error_to_str(const VIError err)
+{
+    return vi_error_to_str(err);
 }
 
 //=====================================signal handlers============================================

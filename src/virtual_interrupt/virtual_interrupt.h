@@ -74,24 +74,24 @@ VIError vidispatcher_init_full(
         wasm_module_inst_t module_inst,
         wasm_function_inst_t main_f,
         const size_t n_lines,
-        const VIDispatcherConf conf);
+        const VIDispatcherConf conf) VI_RESULT_TYPE;
 
 VIError vidispatcher_init(
         VIDispatcher* const restrict dispatcher,
         wasm_module_inst_t module_inst,
         wasm_function_inst_t main_f,
         const size_t n_lines
-        );
+        ) VI_RESULT_TYPE;
 
 VIError vidispatcher_assign_irq_to_line(
         VIDispatcher* const restrict dispatcher,
         const IrqFuncHandler irq_handler,
-        const size_t line);
+        const size_t line) VI_RESULT_TYPE;
 
-VIError vidispatcher_start(VIDispatcher* const restrict dispatcher);
+VIError vidispatcher_start(VIDispatcher* const restrict dispatcher) VI_RESULT_TYPE;
 
-VIError vidispatcher_trigger_interrupt(VIDispatcher* const restrict dispatcher, const IrqLine line);
+VIError vidispatcher_trigger_interrupt(VIDispatcher* const restrict dispatcher, const IrqLine line) VI_RESULT_TYPE;
 
 void vidispatcher_destroy(VIDispatcher* const restrict dispatcher);
 
-const char* vi_error_to_str(const VIError err);
+const char* vidispatcher_error_to_str(const VIError err);

@@ -30,6 +30,21 @@ typedef struct
     atomic_int* out;
 }ThMainThreadArg;
 
+//==============================================declarations=====================================
+
+static inline VIError vi_main_logic_init(
+        VIMainLogicStatus* const restrict status,
+        VIDispatcherStatus* const restrict p_dispatcher_status,
+        wasm_function_inst_t f_main,
+        wasm_module_inst_t module_inst
+        ) VI_RESULT_TYPE;
+
+static inline void vi_main_logic_suspend(VIMainLogicStatus* const restrict status);
+static inline void vi_main_logic_resume(VIMainLogicStatus* const restrict status);
+static inline WorkerStatus vi_main_logic_get_mode(VIMainLogicStatus* const restrict status);
+static inline void vi_main_logic_destroy(VIMainLogicStatus* const restrict status);
+
+//==============================================implementation===================================
 static void* _th_main_thread(void* arg);
 
 static inline VIError vi_main_logic_init(
@@ -111,9 +126,7 @@ static inline void vi_main_logic_destroy(VIMainLogicStatus* const restrict statu
     vi_worker_status_destroy(&status->base);
 }
 
-
-
-//==============================================implementation================================
+//==========================================private=============================================
 
 static void _th_main_thread_cleanup(void* arg)
 {
@@ -167,7 +180,7 @@ static void* _th_main_thread(void* arg)
     vi_worker_status_self_suspend();
 
 //=======================================logic=================================================
-    log("VIMainLogic: starting main");
+    log("starting main");
     vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Working);
     if ( wasm_runtime_call_wasm(th_exec_env, th_arg.main_f, 0, NULL) )
     {
@@ -177,8 +190,11 @@ static void* _th_main_thread(void* arg)
 
     //INFO: if we reach here it means that the main has ended for any reason which is probably
     //an error unless the hole program ended
-    log("VIMainLogic: main ended");
-    vi_worker_status_signal(&th_arg.status->p_dispatcher_status->base);
+    log("main ended");
+    if( (res=vi_worker_status_signal(&th_arg.status->p_dispatcher_status->base)) != VIError_None )
+    {
+        log_err("failed segnaling dispatcher: %s", vi_error_to_str(res));
+    }
     vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Done);
 
 //=======================================end==================================================

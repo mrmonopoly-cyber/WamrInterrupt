@@ -13,10 +13,12 @@
 
 #include "../span/span.h"
 
+//================================================macros=========================================
 #define log(...) vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer), "Worker", __VA_ARGS__)
 #define log_warn(...) vi_log(VILoggerLevel_Warning, log_buffer, sizeof(log_buffer), "Worker", __VA_ARGS__)
 #define log_err(...) vi_log(VILoggerLevel_Error, log_buffer, sizeof(log_buffer), "Worker", __VA_ARGS__)
 
+//================================================types==========================================
 typedef wasm_function_inst_t IrqFuncHandler;
 
 typedef struct
@@ -41,8 +43,22 @@ typedef struct
 
 typedef SPAN_TEMPLATE(VIIrqWorkerStatus) VISpanWorkerStatus;
 
-static void* _th_irq_worker(void* arg);
+//==============================================declarations======================================
 static inline void vi_irq_worker_destroy(VIIrqWorkerStatus* const restrict status);
+
+static inline VIError vi_irq_worker_init(
+        VIIrqWorkerStatus* const restrict status,
+        VIDispatcherStatus* const restrict p_status_dispatcher,
+        IrqFuncHandler* p_funcs,
+        wasm_module_inst_t module_inst
+        ) VI_RESULT_TYPE;
+static inline WorkerStatus vi_irq_worker_get_mode(VIIrqWorkerStatus* const restrict status);
+static inline void vi_irq_worker_suspend(VIIrqWorkerStatus* const restrict status);
+static inline void vi_irq_worker_resume(VIIrqWorkerStatus* const restrict status);
+static inline void vi_irq_worker_destroy(VIIrqWorkerStatus* const restrict status);
+
+//==========================================implementations======================================
+static void* _th_irq_worker(void* arg);
 
 static inline VIError vi_irq_worker_init(
         VIIrqWorkerStatus* const restrict status,
@@ -125,8 +141,6 @@ static inline void vi_irq_worker_destroy(VIIrqWorkerStatus* const restrict statu
     vi_worker_status_destroy(&status->base);
 }
 
-//==========================================implementations======================================
-
 static void _th_irq_workder_thread_cleanup(void* arg)
 {
     char log_buffer[64] = {0};
@@ -140,6 +154,8 @@ static void _th_irq_workder_thread_cleanup(void* arg)
     vi_worker_status_set_working_mode(&status->base, WorkerStatus_Dead);
     log("dead");
 }
+
+//===========================================private=============================================
 
 static void* _th_irq_worker(void* arg)
 {
@@ -210,7 +226,10 @@ static void* _th_irq_worker(void* arg)
 
         log("finshed func: %zu", func_index);
 
-        vi_dispatcher_status_signal(th_arg.status->p_dispatcher);
+        if ( (res = vi_dispatcher_status_signal(th_arg.status->p_dispatcher)) )
+        {
+            log_err("failed signaling the dispatcher: %s", vi_error_to_str(res));
+        }
     }
 
     //INFO: if we reach here it means that there is almost certain a problem

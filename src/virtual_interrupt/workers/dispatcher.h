@@ -1,10 +1,12 @@
 #pragma once
 
 #include "base.h"
+
 #include <assert.h>
 #include <stdatomic.h>
 #include <unistd.h>
 
+//============================================types===============================================
 typedef struct
 {
     VIWorkerStatus base;
@@ -13,6 +15,15 @@ typedef struct
     atomic_bool run;
 }VIDispatcherStatus;
 
+//============================================declarations========================================
+static inline VIError vi_dispatcher_status_init(VIDispatcherStatus* const restrict status,
+        void* (*dispatcher_fun) (void* arg),
+        void* arg) VI_RESULT_TYPE;
+
+static inline VIError vi_dispatcher_status_signal(VIDispatcherStatus* const restrict status) VI_RESULT_TYPE;
+static inline void vi_dispatcher_status_destroy(VIDispatcherStatus* const restrict status);
+
+//============================================implementation======================================
 static inline VIError vi_dispatcher_status_init(VIDispatcherStatus* const restrict status,
         void* (*dispatcher_fun) (void* arg),
         void* arg)
@@ -24,11 +35,11 @@ static inline VIError vi_dispatcher_status_init(VIDispatcherStatus* const restri
     return vi_worker_status_init(&status->base, dispatcher_fun , arg);
 }
 
-static inline void vi_dispatcher_status_signal(VIDispatcherStatus* const restrict status)
+static VIError vi_dispatcher_status_signal(VIDispatcherStatus* const restrict status)
 {
     assert(status);
     atomic_fetch_add(&status->n_requests, 1);
-    vi_worker_status_signal(&status->base);
+    return vi_worker_status_signal(&status->base);
 }
 
 static inline void vi_dispatcher_status_destroy(VIDispatcherStatus* const restrict status)
