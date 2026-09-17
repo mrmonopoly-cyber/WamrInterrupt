@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <time.h>
+#include <unistd.h>
 
 static FILE* vi__log_file = NULL;
 static char vi__log_file_name[256];
@@ -107,6 +108,9 @@ void vi_default_log_handler(VILoggerLevel level, const char* who, const char* ms
             break;
     }
 
-    fprintf(vi__log_file, "%s %s.%03zu <=> %s: %s\n", prefix, str_time, milliseconds, who, msg);
-    fflush(vi__log_file);
+    char buffer[256] = {0};
+
+    int len = snprintf(buffer, sizeof(buffer), "%s\t%s.%03zu <=> %s: %s\n", prefix, str_time, milliseconds, who, msg);
+    
+    write(fileno(vi__log_file), buffer, len);
 }
