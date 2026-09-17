@@ -1,13 +1,12 @@
-#define DEFS_IMPLEMENTATION
-#include "BuildDependencies/defs.h"
-
 #define FAKE_BOARD_IMPLEMENTATION
 #include "BuildDependencies/fake_board.h"
+
+#define VINT_IMPLEMENTATION
+#include "BuildDependencies/virtual_interrupt.h"
 
 #define CLI_IMPLEMENTATION
 #include "BuildDependencies/cli.h"
 
-#include "BuildDependencies/virtual_interrupt.h"
 
 static bool f_run(bool verbose, bool test)
 {
@@ -63,7 +62,7 @@ int main(int argc, char **argv)
     {
         Cmd cmd = {0};
         const char* main_src = "src/launcher/main.c";
-        if ( !f_build_virtual_interrupt(args.verbose, args.test, VIOutputFormat_StaticLib) )
+        if ( !vi_f_build_virtual_interrupt(args.verbose, args.test, VIOutputFormat_StaticLib) )
         {
             nob_log(ERROR, "failed building");
             return 1;
@@ -75,9 +74,9 @@ int main(int argc, char **argv)
         }
 
         cmd_append(&cmd, CC);
-        apply_all_defualt_compile_opts(&cmd);
+        vi_apply_all_defualt_compile_opts(&cmd);
         cmd_append(&cmd, main_src);
-        apply_all_defualt_linker_opts(&cmd);
+        vi_apply_all_defualt_linker_opts(&cmd);
         cmd_append(&cmd, "-o", O_FILE);
         cmd_append(&cmd, "-L", BUILD_DIR);
         cmd_append(&cmd, "-l", VI_OLIB_BASE_NAME);
@@ -104,12 +103,6 @@ int main(int argc, char **argv)
 
   return 0;
 }
-
-#define WAMR_IMPLEMENTATION
-#include "BuildDependencies/wamr.h"
-
-#define VINT_IMPLEMENTATION
-#include "BuildDependencies/virtual_interrupt.h"
 
 #define NOB_IMPLEMENTATION
 #include "BuildDependencies/nob.h"

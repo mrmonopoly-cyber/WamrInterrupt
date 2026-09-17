@@ -21,12 +21,16 @@ typedef enum
 }VIOutputFormat;
 #endif // !VINT_TYPES
 
-bool f_build_virtual_interrupt(bool verbose, bool test, VIOutputFormat format);
+bool vi_f_build_virtual_interrupt(bool verbose, bool test, VIOutputFormat format);
 
 #ifdef VINT_IMPLEMENTATION
-#include "defs.h"
-#include "wamr.h"
 #include "nob.h"
+
+#define WAMR_IMPLEMENTATION
+#include "wamr.h"
+#define DEFS_IMPLEMENTATION
+#include "defs.h"
+
 
 typedef struct
 {
@@ -34,12 +38,12 @@ typedef struct
     bool test;
 }FCompileArgs;
 
-static bool f_compile(Walk_Entry entry);
-static bool f_check(void);
-static bool _f_check_append_sources(Walk_Entry entry);
-static bool f_link(VIOutputFormat format);
+static bool vi_f_compile(Walk_Entry entry);
+static bool vi_f_check(void);
+static bool vi__f_check_append_sources(Walk_Entry entry);
+static bool vi_f_link(VIOutputFormat format);
 
-bool f_build_virtual_interrupt(bool verbose, bool test, VIOutputFormat format)
+bool vi_f_build_virtual_interrupt(bool verbose, bool test, VIOutputFormat format)
 {
     bool res=false;
     Procs procs = {0};
@@ -48,24 +52,25 @@ bool f_build_virtual_interrupt(bool verbose, bool test, VIOutputFormat format)
         .procs = &procs,
         .test = test,
     };
+
+    if ( !(res = vi_f_check()) )
+    {
+        goto end;
+    }
+
     //wamr
     if( !(f_build_wamr(verbose, &procs)) )
     {
         goto end;
     }
 
-    if ( !(res = f_check()) )
-    {
-        goto end;
-    }
-
     //source directories
-    FOR_EACH_FAT_ARRAY_STR(default_src_dir_opts(), dir)
+    FOR_EACH_FAT_ARRAY_STR(vi_default_src_dir_opts(), dir)
     {
         if(dir)
         {
             nob_log(INFO, "compiling sources in src: %s", dir);
-            if( !(res=walk_dir(dir, f_compile, .data = &args)) )
+            if( !(res=walk_dir(dir, vi_f_compile, .data = &args)) )
             {
                 goto end;
             }
@@ -74,7 +79,7 @@ bool f_build_virtual_interrupt(bool verbose, bool test, VIOutputFormat format)
 
     procs_flush(&procs);
 
-    if( !(res=f_link(format)) )
+    if( !(res=vi_f_link(format)) )
     {
         goto end;
     }
@@ -83,26 +88,27 @@ end:
     return res;
 }
 
-static bool f_check(void)
+static bool vi_f_check(void)
 {
     bool res= false;
     Cmd cmd = {0};
 
     SourcesList sources = {0};
 
-    if ( !program_exsists_on_path("clang-tidy") )
+    if ( !vi_program_exsists_on_path("clang-tidy") )
     {
         nob_log( WARNING, "clang-tidy is not present in your system: static check is skipped");
         return true;
     }
 
     cmd_append(&cmd, "clang-tidy");
+    cmd_append(&cmd, "--config-file="VI_PROJET_ROOT"/.clang-tidy");
     cmd_append(&cmd, "--warnings-as-errors=*");
 
     //source directories
-    FOR_EACH_FAT_ARRAY_STR(default_src_dir_opts(), dir)
+    FOR_EACH_FAT_ARRAY_STR(vi_default_src_dir_opts(), dir)
     {
-        if ( !(res = walk_dir(dir, _f_check_append_sources, .data = &sources)) )
+        if ( !(res = walk_dir(dir, vi__f_check_append_sources, .data = &sources)) )
         {
             goto end;
         }
@@ -116,7 +122,7 @@ static bool f_check(void)
     cmd_append(&cmd, "--");
 
     //include path
-    FOR_EACH_FAT_ARRAY_STR(default_include_path_opts(), path)
+    FOR_EACH_FAT_ARRAY_STR(vi_default_include_path_opts(), path)
     {
         if(path) cmd_append(&cmd, temp_sprintf("-I%s", path));
     }
@@ -134,7 +140,7 @@ end:
     return res;
 }
 
-static bool f_compile(Walk_Entry entry)
+static bool vi_f_compile(Walk_Entry entry)
 {
     FCompileArgs* args = entry.data;
     bool res=true;
@@ -147,7 +153,7 @@ static bool f_compile(Walk_Entry entry)
         const char* file_name = nob_temp_file_name(entry.path);
 
         cmd_append(&cmd, CC);
-        apply_all_defualt_compile_opts(&cmd);
+        vi_apply_all_defualt_compile_opts(&cmd);
         cmd_append(&cmd, "-fPIC");
 
         if ( args->test )
@@ -161,7 +167,7 @@ static bool f_compile(Walk_Entry entry)
 
         if ( args->test && !strcmp(file_name, "main.c" ) )
         {
-            entry.path = "./BuildDependencies/dummy_main.c";
+            entry.path = VI_PROJET_ROOT"/BuildDependencies/dummy_main.c";
         }
 
         cmd_append(&cmd, entry.path);
@@ -174,7 +180,7 @@ static bool f_compile(Walk_Entry entry)
     return res;
 }
 
-static bool _f_check_append_sources(Walk_Entry entry)
+static bool vi__f_check_append_sources(Walk_Entry entry)
 {
     const char* name = temp_file_name(entry.path);
     const char* suffix = name + strlen(name) - 2;
@@ -188,7 +194,7 @@ static bool _f_check_append_sources(Walk_Entry entry)
     return true;
 }
 
-static bool f_link(VIOutputFormat format)
+static bool vi_f_link(VIOutputFormat format)
 {
     Dir_Entry dir = {0};
     Cmd cmd = {0};
@@ -201,7 +207,7 @@ static bool f_link(VIOutputFormat format)
 
         case VIOutputFormat_StaticLib:
             {
-                if ( !(res = program_exsists_on_path("ar")) )
+                if ( !(res = vi_program_exsists_on_path("ar")) )
                 {
                     nob_log( ERROR, "ar is not present in your PATH. abort" );
                     goto end;
@@ -217,7 +223,7 @@ static bool f_link(VIOutputFormat format)
                 cmd_append(&cmd, CC);
                 cmd_append(&cmd, "-o", BUILD_DIR"/"VI_OLIB_NAME".so");
 
-                apply_all_defualt_linker_opts(&cmd);
+                vi_apply_all_defualt_linker_opts(&cmd);
                 cmd_append(&cmd, "-shared");
 
             }
@@ -243,5 +249,3 @@ end:
 }
 
 #endif // VINT_IMPLEMENTATION
-
-

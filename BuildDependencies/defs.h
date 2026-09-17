@@ -1,18 +1,21 @@
-#pragma once
-
-//==================================macros======================================================
 
 #include <assert.h>
 #include <stddef.h>
 
 #include "nob.h"
 
+//==================================macros======================================================
 #define ArraySize(ARR) (sizeof(ARR)/sizeof(ARR[0]))
 
 #define CC "cc"
 
+#ifndef VI_PROJET_ROOT
+#pragma message "no VI_PROJET_ROOT passed using default value: \".\""
+#define VI_PROJET_ROOT "."
+#endif // !VI_PROJET_ROOT
+
 #define BUILD_DIR "build"
-#define THIRDPARTY "ThirdParty"
+#define VI_THIRDPARTY VI_PROJET_ROOT"/ThirdParty"
 
 #define O_FILE "main"
 
@@ -40,7 +43,8 @@ struct                                  \
             ____RUN = NULL)
 
 //==================================type definitions===========================================
-
+#ifndef DEFS_TYPES
+#define DEFS_TYPES
 typedef struct GDef{
     const char* def;
     const char* val;
@@ -49,27 +53,36 @@ typedef struct GDef{
 typedef FAT_ARRAY_TEMPLATE(void)    ArrayViewVoid;
 typedef FAT_ARRAY_TEMPLATE(char*)   ArrayViewString;
 typedef FAT_ARRAY_TEMPLATE(GDef)    ArrayViewGDef;
+#endif // !DEFS_TYPES
 
 //==================================functions declarations======================================
 
-void apply_global_definitions(Cmd* cmd, ArrayViewGDef defs);
+void vi_apply_global_definitions(Cmd* cmd, ArrayViewGDef defs);
 
-ArrayViewString default_src_dir_opts(void);
-ArrayViewString default_compiler_opts(void);
-ArrayViewString default_linker_opts(void);
-ArrayViewString default_include_path_opts(void);
-ArrayViewGDef default_global_defs_opts(void);
+ArrayViewString vi_default_src_dir_opts(void);
+ArrayViewString vi_default_compiler_opts(void);
+ArrayViewString vi_default_linker_opts(void);
+ArrayViewString vi_default_include_path_opts(void);
+ArrayViewGDef vi_default_global_defs_opts(void);
 
-void apply_all_defualt_compile_opts(Cmd* cmd);
-void apply_all_defualt_linker_opts(Cmd* cmd);
+void vi_apply_all_defualt_compile_opts(Cmd* cmd);
+void vi_apply_all_defualt_linker_opts(Cmd* cmd);
 
-bool program_exsists_on_path(const char* program_name);
+bool vi_file_has_suffix(
+        const char* const restrict file_name, const size_t len_file_name,
+        const char* const restrict suffix, const size_t len_suffix);
+
+bool vi_file_has_suffix_with_null(
+        const char* const restrict file_name,
+        const char* const restrict suffix);
+
+bool vi_program_exsists_on_path(const char* program_name);
 
 //================================implementation================================================
 
 #ifdef DEFS_IMPLEMENTATION
 
-void apply_global_definitions(Cmd* cmd, ArrayViewGDef defs)
+void vi_apply_global_definitions(Cmd* cmd, ArrayViewGDef defs)
 {
     assert(cmd);
 
@@ -88,38 +101,38 @@ void apply_global_definitions(Cmd* cmd, ArrayViewGDef defs)
 
 }
 
-void apply_all_defualt_compile_opts(Cmd* cmd)
+void vi_apply_all_defualt_compile_opts(Cmd* cmd)
 {
     assert(cmd);
 
     //compiler options
-    FOR_EACH_FAT_ARRAY_STR(default_compiler_opts(), opt)
+    FOR_EACH_FAT_ARRAY_STR(vi_default_compiler_opts(), opt)
     {
         if(opt) cmd_append(cmd, opt);
     }
 
     //include path
-    FOR_EACH_FAT_ARRAY_STR(default_include_path_opts(), path)
+    FOR_EACH_FAT_ARRAY_STR(vi_default_include_path_opts(), path)
     {
         if(path) cmd_append(cmd, temp_sprintf("-I%s", path));
     }
 
     //global definitions
-    apply_global_definitions(cmd, default_global_defs_opts());
+    vi_apply_global_definitions(cmd, vi_default_global_defs_opts());
 }
 
-void apply_all_defualt_linker_opts(Cmd* cmd)
+void vi_apply_all_defualt_linker_opts(Cmd* cmd)
 {
     assert(cmd);
 
-    FOR_EACH_FAT_ARRAY_STR(default_linker_opts(), opt)
+    FOR_EACH_FAT_ARRAY_STR(vi_default_linker_opts(), opt)
     {
         if(opt) cmd_append(cmd, opt);
     }
 
 }
 
-bool program_exsists_on_path(const char* program_name)
+bool vi_program_exsists_on_path(const char* program_name)
 {
     bool res=false;
     Cmd cmd = {0};
@@ -134,18 +147,18 @@ bool program_exsists_on_path(const char* program_name)
     return res;
 }
 
-ArrayViewString default_src_dir_opts(void)
+ArrayViewString vi_default_src_dir_opts(void)
 {
     static const char* opts[] = 
     {
-        "src/virtual_interrupt",
+        VI_PROJET_ROOT"/src/virtual_interrupt",
         //add here your sources directory like ThirdParty dependencies sources
     };
 
     return (ArrayViewString) FAT_ARRAY_INIT(opts);
 }
 
-ArrayViewString default_compiler_opts(void)
+ArrayViewString vi_default_compiler_opts(void)
 {
     static const char* opts[] = 
     {
@@ -161,7 +174,7 @@ ArrayViewString default_compiler_opts(void)
     return (ArrayViewString) FAT_ARRAY_INIT(opts);
 }
 
-ArrayViewString default_linker_opts(void)
+ArrayViewString vi_default_linker_opts(void)
 {
     static const char* opts[] = 
     {
@@ -176,18 +189,18 @@ ArrayViewString default_linker_opts(void)
     return (ArrayViewString) FAT_ARRAY_INIT(opts);
 }
 
-ArrayViewString default_include_path_opts(void)
+ArrayViewString vi_default_include_path_opts(void)
 {
     static const char* opts[] = 
     {
-        THIRDPARTY"/wamr/wasm-micro-runtime/core/iwasm/include",
-        THIRDPARTY"/wamr/wasm-micro-runtime/core/iwasm/libraries/thread-mgr",
-        THIRDPARTY"/wamr/wasm-micro-runtime/core/shared/utils",
-        THIRDPARTY"/wamr/wasm-micro-runtime/core/shared/utils/uncommon",
-        THIRDPARTY"/wamr/wasm-micro-runtime/core/shared/platform/include",
-        THIRDPARTY"/wamr/wasm-micro-runtime/core/shared/platform/linux",
+        VI_THIRDPARTY"/wamr/wasm-micro-runtime/core/iwasm/include",
+        VI_THIRDPARTY"/wamr/wasm-micro-runtime/core/iwasm/libraries/thread-mgr",
+        VI_THIRDPARTY"/wamr/wasm-micro-runtime/core/shared/utils",
+        VI_THIRDPARTY"/wamr/wasm-micro-runtime/core/shared/utils/uncommon",
+        VI_THIRDPARTY"/wamr/wasm-micro-runtime/core/shared/platform/include",
+        VI_THIRDPARTY"/wamr/wasm-micro-runtime/core/shared/platform/linux",
 
-        THIRDPARTY"/wamr/wasm-micro-runtime/core/iwasm/interpreter",
+        VI_THIRDPARTY"/wamr/wasm-micro-runtime/core/iwasm/interpreter",
 
         //add here your include path: -I...
         //consider the root of the project the starting source path
@@ -196,7 +209,7 @@ ArrayViewString default_include_path_opts(void)
     return (ArrayViewString) FAT_ARRAY_INIT(opts);
 }
 
-ArrayViewGDef default_global_defs_opts(void)
+ArrayViewGDef vi_default_global_defs_opts(void)
 {
     static const GDef opts[] = 
     {
@@ -209,6 +222,22 @@ ArrayViewGDef default_global_defs_opts(void)
     };
 
     return (ArrayViewGDef) FAT_ARRAY_INIT(opts);
+}
+
+bool vi_file_has_suffix(
+        const char* file_name, const size_t len_file_name,
+        const char* suffix, const size_t len_suffix)
+{
+    const char* file_name_suffix = file_name + len_file_name - len_suffix;
+
+    return !strcmp(file_name_suffix, suffix);
+}
+
+bool vi_file_has_suffix_with_null(
+        const char* const restrict file_name,
+        const char* const restrict suffix)
+{
+    return vi_file_has_suffix(file_name, strlen(file_name), suffix, strlen(suffix));
 }
 
 #endif // DEFS_IMPLEMENTATION
