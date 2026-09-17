@@ -34,8 +34,8 @@
 //=====================================function declarations======================================
 static void* _th_dispatcher(void* arg);
 
-static void _th_irq_worker_signal_handler(int signal);
-static void _th_irq_resume_signal_handler(int signal);
+static void _worker_suspend_signal_handler(int signal);
+static void _worker_resume_signal_handler(int signal);
 
 static inline VIIrqWorkerStatus* _get_active_worker(const VIDispatcher* const restrict d);
 static inline VIIrqWorkerStatus* _prepare_new_worker(
@@ -80,14 +80,18 @@ VIError vidispatcher_init_full(
         goto end;
     }
 
-//======================================init queues==========================================
+//======================================init queues===============================================
     spscq_init(&dispatcher->channel_ready_ureq);
     minheap_init(&dispatcher->minheap_ureq);
 
-//======================================init signals=========================================
+//======================================init signals==============================================
     {
+        struct sigaction sa = {0};
+
         const int sig_suspend = conf.suspend_signal;
         const int sig_resume = conf.resume_signal;
+
+        sa.sa_flags = SA_NOCLDSTOP | SA_RESTART;
 
         if ( (res = _vi_set_signal(VISignals_Suspend, sig_suspend)) != VIError_None )
         {
@@ -99,14 +103,16 @@ VIError vidispatcher_init_full(
             goto end;
         }
 
-        if ( signal(sig_suspend, _th_irq_worker_signal_handler) ==  SIG_ERR )
+        sa.sa_handler = _worker_suspend_signal_handler;
+        if ( sigaction(sig_suspend, &sa, NULL) == -1 )
         {
             res =VIError_Libc;
             _vi_set_errno(errno);
             goto end;
         }
 
-        if ( signal(sig_resume, _th_irq_resume_signal_handler) ==  SIG_ERR )
+        sa.sa_handler = _worker_resume_signal_handler;
+        if ( sigaction(sig_resume, &sa, NULL) == -1 )
         {
             res =VIError_Libc;
             _vi_set_errno(errno);
@@ -581,7 +587,7 @@ const char* vidispatcher_error_to_str(const VIError err)
 }
 
 //=====================================signal handlers============================================
-static void _th_irq_worker_signal_handler(int signal)
+static void _worker_suspend_signal_handler(int signal)
 {
     //NOLINTNEXTLINE(bugprone-signal-handler)
     if ( (VISignals) signal == _vi_get_signal(VISignals_Suspend) )
@@ -591,7 +597,7 @@ static void _th_irq_worker_signal_handler(int signal)
 
 }
 
-static void _th_irq_resume_signal_handler(int signal)
+static void _worker_resume_signal_handler(int signal)
 {
     (void) signal;
     /*does nothing*/
