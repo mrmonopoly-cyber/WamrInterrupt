@@ -116,7 +116,6 @@ bool f_build_fakeboard(bool verbose, const char* path_main)
     cmd_append(&cmd, "./"WASI_SDK_NAME"/bin/clang");
     cmd_append(&cmd, "--sysroot=./"WASI_SDK_NAME"/share/wasi-sysroot");
     cmd_append(&cmd, "--target=wasm32-wasip1-threads");
-    cmd_append(&cmd, "-pthread");
 
     cmd_append(&cmd, "-mexec-model=reactor");
     cmd_append(&cmd, "-Wl,--no-entry");

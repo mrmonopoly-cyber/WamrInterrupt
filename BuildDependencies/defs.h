@@ -214,7 +214,7 @@ ArrayViewGDef vi_default_global_defs_opts(void)
     static const GDef opts[] = 
     {
         //wamr features
-        {"WASM_ENABLE_THREAD_MGR"               , "1"},
+        {"WASM_ENABLE_THREAD_MGR"               , "0"},
         {"WASM_ENABLE_CUSTOM_NAME_SECTION"      , "1"},
         {"_GNU_SOURCE",                              },
 
