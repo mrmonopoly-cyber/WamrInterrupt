@@ -340,7 +340,13 @@ start_dispatcher_loop:
             }
 
             vi_worker_status_set_working_mode(&dispatcher->dispatcher.base, WorkerStatus_Working);
-            log("dispatcher woke up");
+            log("woke up");
+        }
+
+        if ( !atomic_load(&dispatcher->dispatcher.run) )
+        {
+            log("received termination request, stopping execution");
+            break;
         }
 
         if ( atomic_load(&dispatcher->dispatcher.n_requests) == 0 )
