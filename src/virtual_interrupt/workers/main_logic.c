@@ -1,4 +1,5 @@
 #include "main_logic.h"
+#include "base.h"
 
 #include <errno.h>
 #include <pthread.h>
@@ -88,6 +89,7 @@ void vi_main_logic_destroy(VIMainLogicStatus* const restrict status)
     assert(status);
 
     vi_worker_status_destroy(&status->base);
+    vi_worker_status_set_working_mode(&status->base, WorkerStatus_Dead);
 }
 
 //==========================================private=============================================
