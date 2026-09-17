@@ -50,22 +50,43 @@ typedef struct
 
 void host_stdout_print(wasm_exec_env_t env, const char * msg)
 {
+    if (!wasm_runtime_begin_blocking_op(env))
+    {
+        return;
+    }
+
     static char log_buffer[128] = {0};
     (void) env;
     log("board print basic: %s", msg);
+
+    wasm_runtime_end_blocking_op(env);
 }
 
 void new_host_stdout_print(wasm_exec_env_t env, const char * msg)
 {
+    if (!wasm_runtime_begin_blocking_op(env))
+    {
+        return;
+    }
+
     static char log_buffer[128] = {0};
     (void) env;
     log("board print advanced: %s", msg);
+
+    wasm_runtime_end_blocking_op(env);
 }
 
 void new_board_set_executor(wasm_exec_env_t env, const Executor executor)
 {
+    if (!wasm_runtime_begin_blocking_op(env))
+    {
+        return;
+    }
+
     (void) env;
     board_set_executor(executor);
+    
+    wasm_runtime_end_blocking_op(env);
 }
 
 int main(int argc, char *argv[])
