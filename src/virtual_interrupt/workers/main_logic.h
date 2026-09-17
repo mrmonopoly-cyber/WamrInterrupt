@@ -29,6 +29,6 @@ VIError vi_main_logic_init(
 
 void vi_main_logic_suspend(VIMainLogicStatus* const restrict status);
 void vi_main_logic_resume(VIMainLogicStatus* const restrict status);
-WorkerStatus vi_main_logic_get_mode(VIMainLogicStatus* const restrict status);
+WorkerStatus vi_main_logic_get_mode(const VIMainLogicStatus* const restrict status);
 void vi_main_logic_destroy(VIMainLogicStatus* const restrict status);
 

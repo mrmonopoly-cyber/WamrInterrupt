@@ -39,7 +39,7 @@ void vi_worker_status_resume(VIWorkerStatus* const restrict status);
 void vi_worker_status_set_working_mode(
         VIWorkerStatus* const restrict status,
         WorkerStatus wc);
-WorkerStatus vi_worker_status_get_working_mode( VIWorkerStatus* const restrict status);
+WorkerStatus vi_worker_status_get_working_mode(const VIWorkerStatus* const restrict status);
 
 VIError vi_worker_status_signal(VIWorkerStatus* const restrict status) VI_RESULT_TYPE;
 VIError vi_worker_status_signal(VIWorkerStatus* const restrict status) VI_RESULT_TYPE;

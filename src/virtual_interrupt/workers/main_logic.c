@@ -1,6 +1,8 @@
 #include "main_logic.h"
 
+#include <errno.h>
 #include <pthread.h>
+#include <string.h>
 #include <unistd.h>
 
 #define log(...) vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer), "MainLogic", __VA_ARGS__)
@@ -74,7 +76,7 @@ void vi_main_logic_resume(VIMainLogicStatus* const restrict status)
     vi_worker_status_set_working_mode(&status->base, WorkerStatus_Working);
 }
 
-WorkerStatus vi_main_logic_get_mode(VIMainLogicStatus* const restrict status)
+WorkerStatus vi_main_logic_get_mode(const VIMainLogicStatus* const restrict status)
 {
     assert(status);
 
@@ -155,7 +157,9 @@ static void* _th_main_thread(void* arg)
     log("main ended");
     if( (res=vi_worker_status_signal(&th_arg.status->p_dispatcher_status->base)) != VIError_None )
     {
-        log_err("failed segnaling dispatcher: %s", vi_error_to_str(res));
+        char buf[64] = {0};
+        strerror_r(errno, buf, sizeof(buf));
+        log_err("failed segnaling dispatcher: %s %s", vi_error_to_str(res), buf);
     }
     vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Done);
 

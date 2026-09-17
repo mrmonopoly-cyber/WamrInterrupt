@@ -56,7 +56,7 @@ void vi_worker_status_set_working_mode(
     atomic_store(&status->working_status, wc);
 }
 
-WorkerStatus vi_worker_status_get_working_mode( VIWorkerStatus* const restrict status)
+WorkerStatus vi_worker_status_get_working_mode( const VIWorkerStatus* const restrict status)
 {
     assert( status );
     size_t res = atomic_load(&status->working_status);
