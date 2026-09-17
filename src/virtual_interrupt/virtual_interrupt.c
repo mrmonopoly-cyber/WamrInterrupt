@@ -16,6 +16,7 @@
 #include "logger.h"
 #include "minheap/minheap.h"
 #include "workers/workers.h"
+#include "irq_workers_list.h"
 
 #define SPAN_IMPLEMENTATION
 #include "span/span.h"
@@ -24,13 +25,7 @@
 
 //=====================================macros====================================================
 
-#define FOR_EACH_IRQ_WORKER_INDEX(NAME, WORKERS) \
-    for (size_t NAME = 1; i <= (span_len(WORKERS)); i++)
-
-#define FOR_EACH_IRQ_WORKER_RANGE(NAME, MAX) \
-    for (size_t NAME = 1; i <= (MAX); i++)
-
-#define log(...) vi_log(VILoggerLevel_Trace, log_buffer, sizeof(log_buffer), "Dispatcher", __VA_ARGS__)
+#define log(...) vi_log(VILoggerLevel_Info, log_buffer, sizeof(log_buffer), "Dispatcher", __VA_ARGS__)
 #define log_warn(...) vi_log(VILoggerLevel_Warning, log_buffer, sizeof(log_buffer), "Dispatcher", __VA_ARGS__)
 #define log_err(...) vi_log(VILoggerLevel_Error, log_buffer, sizeof(log_buffer),"Dispatcher",  __VA_ARGS__)
 
@@ -43,7 +38,6 @@ static void _th_irq_worker_signal_handler(int signal);
 static void _th_irq_resume_signal_handler(int signal);
 
 static inline VIIrqWorkerStatus* _get_active_worker(const VIDispatcher* const restrict d);
-static inline VIIrqWorkerStatus* _get_worker(const VIDispatcher* const restrict d, const size_t i);
 static inline VIIrqWorkerStatus* _prepare_new_worker(
         VIDispatcher* const restrict d, const IrqLine func_index);
 
@@ -151,7 +145,7 @@ VIError vidispatcher_init_full(
     for(size_t i=1; i<=depth; i++)
     {
         log("init worker: %zu", i);
-        VIIrqWorkerStatus* worker = _get_worker(dispatcher, i);
+        VIIrqWorkerStatus* worker = _get_worker(&dispatcher->workers, i);
         assert( worker );
 
         if ((
@@ -201,11 +195,14 @@ VIError vidispatcher_assign_irq_to_line(
         const IrqFuncHandler irq_handler,
         const size_t line)
 {
+    char log_buffer[64] = {0};
+
     if( !dispatcher || line >= dispatcher->n_funcs)
     {
         return VIError_InvalidInput;
     }
 
+    log("setting irq line %zu, to %p", line, irq_handler);
     dispatcher->funcs[line] = irq_handler;
 
     return VIError_None;
@@ -275,7 +272,7 @@ void vidispatcher_destroy(VIDispatcher* const restrict dispatcher)
 
         FOR_EACH_IRQ_WORKER_INDEX(i, &dispatcher->workers)
         {
-            VIIrqWorkerStatus* worker = _get_worker(dispatcher, i);
+            VIIrqWorkerStatus* worker = _get_worker(&dispatcher->workers, i);
             WorkerStatus w_status = vi_irq_worker_get_mode(worker);
 
             if ( w_status != WorkerStatus_Init && w_status != WorkerStatus_Dead )
@@ -552,7 +549,7 @@ static inline VIIrqWorkerStatus* _prepare_new_worker(
 
         for (size_t i=d->executing_worker + 1; i<=new_stack_size; i++)
         {
-            worker = _get_worker(d, i);
+            worker = _get_worker(&d->workers, i);
             assert( worker );
 
             assert( d->module_inst );
@@ -575,24 +572,7 @@ static inline VIIrqWorkerStatus* _prepare_new_worker(
 static inline VIIrqWorkerStatus* _get_active_worker(const VIDispatcher* const restrict d)
 {
     assert(d);
-    return _get_worker(d, d->executing_worker);
-}
-
-static inline VIIrqWorkerStatus* _get_worker(const VIDispatcher* const restrict d, const size_t i)
-{
-    VIIrqWorkerStatus* res = NULL;
-    SpanError span_res;
-
-    assert(d);
-
-    if ( i > 0 && i <= span_len(&d->workers) )
-    {
-        span_get(&d->workers, i - 1, &res, &span_res);
-
-        assert( span_res == SpanError_None );
-    }
-
-    return res;
+    return _get_worker(&d->workers, d->executing_worker);
 }
 
 const char* vidispatcher_error_to_str(const VIError err)

@@ -95,3 +95,69 @@ VIError vidispatcher_trigger_interrupt(VIDispatcher* const restrict dispatcher, 
 void vidispatcher_destroy(VIDispatcher* const restrict dispatcher);
 
 const char* vidispatcher_error_to_str(const VIError err);
+
+//=======================================debug===================================================
+
+//=======================================types===================================================
+typedef enum
+{
+  VIDWorkerID_Main,
+  VIDWorkerID_Irq,
+  VIDWorkerID_Dispatcher,
+}VIDWorkerID;
+
+typedef struct
+{
+    VIDWorkerID t;
+    WorkerStatus status;
+}VIDWorkerStatus;
+
+
+//=====================================declarations==============================================
+VIError debug_vidispatcher_get_workers_status(
+        const VIDispatcher* const restrict dispatcher,
+        VIDWorkerStatus** out, size_t* n_out) VI_RESULT_TYPE;
+static inline size_t debug_vidispatcher_n_requests(const VIDispatcher* const restrict dispatcher);
+
+static inline const char* debug_vidispatcher_worker_id_to_str(const VIDWorkerID id);
+static inline const char* debug_vidispatcher_worker_status_to_str(const WorkerStatus status);
+
+//=====================================implementations===========================================
+static inline size_t debug_vidispatcher_n_requests(const VIDispatcher* const restrict dispatcher)
+{
+    size_t res = SIZE_MAX;
+
+    if ( dispatcher )
+    {
+        res = atomic_load(&dispatcher->dispatcher.n_requests);
+    }
+
+    return res;
+}
+
+static inline const char* debug_vidispatcher_worker_id_to_str(const VIDWorkerID id)
+{
+    switch (id)
+    {
+        case VIDWorkerID_Main:                  return "VI_Main";
+        case VIDWorkerID_Irq:                   return "VI_Irq";
+        case VIDWorkerID_Dispatcher:            return "VI_Dispatcher";
+    }
+
+    assert(0 && "unreachable");
+}
+
+static inline const char* debug_vidispatcher_worker_status_to_str(const WorkerStatus status)
+{
+    switch (status)
+    {
+        case WorkerStatus_Init:                 return "VI_Init";
+        case WorkerStatus_Working:              return "VI_Working";
+        case WorkerStatus_Suspended:            return "VI_Suspend";
+        case WorkerStatus_Done:                 return "VI_Done";
+        case WorkerStatus_Dead:                 return "VI_Dead";
+        case __WorkerStatus_Count:              assert(0 && "unreachable switch count");
+    }
+
+    assert(0 && "unreachable");
+}
