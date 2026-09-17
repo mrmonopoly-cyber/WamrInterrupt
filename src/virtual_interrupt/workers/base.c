@@ -2,6 +2,7 @@
 
 #include <signal.h>
 #include <pthread.h>
+#include <unistd.h>
 
 //====================================implementation==============================================
 
@@ -37,6 +38,10 @@ void vi_worker_status_suspend(VIWorkerStatus* const restrict status)
     if ( atomic_exchange(&status->working_status, WorkerStatus_Suspended) != WorkerStatus_Suspended )
     {
         pthread_kill(status->th_id, _vi_get_signal(VISignals_Suspend));
+        //FIXME: on small intervals it's possible that two requests happen too fast
+        //not giving enough time to the kernel to do the context switch for the threads.
+        //For now a delay has been added to limit the damage on such cases but it's NOT a solution
+        usleep(1000); //HACK: to give time to the kernel to do the context switch
     }
 }
 
@@ -46,6 +51,7 @@ void vi_worker_status_resume(VIWorkerStatus* const restrict status)
 
     atomic_store(&status->working_status, WorkerStatus_Working);
     pthread_kill(status->th_id, _vi_get_signal(VISignals_Resume));
+    usleep(1000); //HACK: to give time to the kernel to do the context switch
 }
 
 void vi_worker_status_set_working_mode(
