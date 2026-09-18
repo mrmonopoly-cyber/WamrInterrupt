@@ -231,17 +231,7 @@ VIError vidispatcher_start(VIDispatcher* const restrict dispatcher)
     vi_worker_status_set_working_mode(&dispatcher->dispatcher.base, WorkerStatus_Init);
 
     log("starting dispatcher");
-    VI_LOOP_TRY(counter, (res = vi_main_logic_resume(&dispatcher->main_fun_status)) != VIError_None )
-    {
-        log_warn("try %zu: failed starting main logic: %s. retrying after %zu millis",
-                counter, vi_error_to_str(res), wait_millis );
-        usleep(wait_millis * 1000);
-    }
-
-    if ( res != VIError_None )
-    {
-        return res;
-    }
+    vi_main_logic_resume(&dispatcher->main_fun_status);
 
     assert( vi_main_logic_get_mode(&dispatcher->main_fun_status) == WorkerStatus_Working );
 
@@ -253,7 +243,7 @@ VIError vidispatcher_start(VIDispatcher* const restrict dispatcher)
             )
     {
         log("try %zu: %s waiting dispatcher thread to start", counter, __func__);
-        usleep(1000 * 1000);
+        usleep(wait_millis * 1000);
     }
 
     return res;
@@ -417,13 +407,19 @@ start_dispatcher_loop:
 
                     assert( new_worker );
 
-                    vi_irq_worker_resume(new_worker);
+                    if ( vi_irq_worker_resume(new_worker) != VIError_None )
+                    {
+                        log_err("failed to resume worker: %zu", dispatcher->executing_worker);
+                    }
                 }
                 else
                 {
                     log("resuming suspended worker: %zu",
                             dispatcher->executing_worker);
-                    vi_irq_worker_resume(old_worker);
+                    if ( vi_irq_worker_resume(old_worker) != VIError_None )
+                    {
+                        log_err("failed to resume worker: %zu", dispatcher->executing_worker);
+                    }
                 }
 
                 goto start_dispatcher_loop;
@@ -457,12 +453,18 @@ start_dispatcher_loop:
             {
                 log("suspending old worker: %zu",
                         dispatcher->executing_worker - 1);
-                vi_irq_worker_suspend(old_worker);
+                if ( vi_irq_worker_suspend(old_worker) != VIError_None )
+                {
+                    log_err("failed to suspend worker: %zu", dispatcher->executing_worker - 1);
+                }
             }
 
             //start new thread (i+1)
             log("starting new worker: %zu", dispatcher->executing_worker);
-            vi_irq_worker_resume(new_worker);
+            if ( vi_irq_worker_resume(new_worker) != VIError_None )
+            {
+                log_err("failed to resume worker: %zu", dispatcher->executing_worker);
+            }
         }
         //ELSE IF the ureq < req that is already executing THAN save it on a wait queue for later
         else if ( spscq_op_ok )
@@ -503,7 +505,10 @@ start_dispatcher_loop:
             //start thread (1)
             log("starting new worker from wait queue. (Req: %zu, Worker: %zu)",
                     ureq, dispatcher->executing_worker);
-            vi_irq_worker_resume(new_worker);
+            if ( vi_irq_worker_resume(new_worker) != VIError_None )
+            {
+                log_err("failed to resume worker: %zu", dispatcher->executing_worker);
+            }
         }
 
         assert(!(

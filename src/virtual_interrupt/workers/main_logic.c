@@ -56,7 +56,7 @@ fail:
     return out;
 }
 
-VIError vi_main_logic_suspend(VIMainLogicStatus* const restrict status)
+void vi_main_logic_suspend(VIMainLogicStatus* const restrict status)
 {
     VIError res;
     char log_buffer[64] = {0};
@@ -72,11 +72,9 @@ VIError vi_main_logic_suspend(VIMainLogicStatus* const restrict status)
         log_warn("failed to actual suspend the main logic: already suspended");
         res = VIError_None;
     }
-
-    return res;
 }
 
-VIError vi_main_logic_resume(VIMainLogicStatus* const restrict status)
+void vi_main_logic_resume(VIMainLogicStatus* const restrict status)
 {
     VIError res;
     char log_buffer[64] = {0};
@@ -92,8 +90,6 @@ VIError vi_main_logic_resume(VIMainLogicStatus* const restrict status)
         log_warn("failed to actual resume the main logic: already working");
         res = VIError_None;
     }
-
-    return res;
 }
 
 WorkerStatus vi_main_logic_get_mode(const VIMainLogicStatus* const restrict status)
