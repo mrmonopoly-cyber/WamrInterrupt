@@ -192,16 +192,11 @@ static bool vi_f_compile(Walk_Entry entry)
             }
 
             cmd_append(&cmd, "bear");
-            cmd_append(&cmd, "--output", "./compile_commands.json");
-
             if ( file_exists("compile_commands.json") )
             {
                 cmd_append(&cmd, "--append");
             }
-            else
-            {
-                cmd_append(&cmd, "--overwrite");
-            }
+            // cmd_append(&cmd, "--output", "./compile_commands.json");
 
             cmd_append(&cmd, "--");
         }
