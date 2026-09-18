@@ -38,7 +38,7 @@ typedef struct __VirtualInterruptDispatcher
 {
     VIMainLogicStatus main_fun_status;
     VISpanWorkerStatus workers;
-    VIDispatcherStatus dispatcher;
+    VIDispatcherStatus* dispatcher;
 
     IrqFuncHandler* funcs;
     size_t n_funcs;
@@ -128,7 +128,7 @@ static inline size_t debug_vidispatcher_n_requests(const VIDispatcher* const res
 
     if ( dispatcher )
     {
-        res = atomic_load(&dispatcher->dispatcher.n_requests);
+        res = atomic_load(&dispatcher->dispatcher->n_requests);
     }
 
     return res;

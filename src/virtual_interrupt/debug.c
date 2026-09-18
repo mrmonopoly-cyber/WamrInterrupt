@@ -36,7 +36,7 @@ VIError debug_vidispatcher_get_workers_status(
 
     o_buffer[0] = (VIDWorkerStatus){
         .t = VIDWorkerID_Dispatcher,
-        .status = vi_worker_status_get_working_mode(&dispatcher->dispatcher.base),
+        .status = vi_worker_status_get_working_mode(&dispatcher->dispatcher->base),
     };
 
     o_buffer[1] = (VIDWorkerStatus){
