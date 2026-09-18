@@ -7,7 +7,6 @@
 #define CLI_IMPLEMENTATION
 #include "BuildDependencies/cli.h"
 
-
 static bool f_run(bool verbose, bool test)
 {
     bool res = false;
@@ -65,11 +64,23 @@ int main(int argc, char **argv)
 
     mkdir_if_not_exists(BUILD_DIR);
 
+    if ( args.fetch && !vi_f_fetch_deps() )
+    {
+        nob_log(ERROR, "failed fetching dependencies");
+        return 1;
+    }
+
     if( args.build || args.run )
     {
         Cmd cmd = {0};
         const char* main_src = "src/launcher/main.c";
-        if ( !vi_f_build_virtual_interrupt(args.verbose, args.test, args.lsp, VIOutputFormat_StaticLib) )
+        if ( 
+                !vi_f_build_virtual_interrupt(
+                    args.verbose,
+                    args.test,
+                    args.lsp,
+                    VIOutputFormat_StaticLib)
+           )
         {
             nob_log(ERROR, "failed building");
             return 1;

@@ -9,6 +9,7 @@ typedef struct CCliUserArgs{
     bool verbose;
     bool test;
     bool run;
+    bool fetch;
     bool build;
     bool clean;
     bool lsp;
@@ -22,6 +23,7 @@ CLI_PREFIX bool cli_parse(CliArgs* args, const int argc, char** argv);
 #include "c_cli.h"
 
 CCLI_PARSER_DECLARE(test);
+CCLI_PARSER_DECLARE(fetch);
 CCLI_PARSER_DECLARE(build);
 CCLI_PARSER_DECLARE(run);
 CCLI_PARSER_DECLARE(clean);
@@ -36,6 +38,15 @@ static const CCliArgDef defs[] =
         .f_args = CCLI_NO_ARG,
         .f_description = "run the tests",
         .f_parser = CCLI_PARSER_NAME(test),
+    },
+
+    //--fetch, -f
+    {
+        .f_long = CCLI_LONG_FLAG(fetch),
+        .f_short = CCLI_SHORT_FLAG(f),
+        .f_args = CCLI_NO_ARG,
+        .f_description = "fetch the dependencies (submodules)",
+        .f_parser = CCLI_PARSER_NAME(fetch),
     },
 
     //--build, -b
@@ -95,8 +106,15 @@ CCLI_PARSER_DECLARE_FULL(test, args, ctx)
     return CCliActionOK;
 }
 
+CCLI_PARSER_DECLARE_FULL(fetch, args, ctx)
+{
+    args->fetch = true;
+    return CCliActionOK;
+}
+
 CCLI_PARSER_DECLARE_FULL(build, args, ctx)
 {
+    args->fetch = true;
     args->build = true;
     return CCliActionOK;
 }

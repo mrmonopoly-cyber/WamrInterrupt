@@ -21,6 +21,8 @@ typedef enum
 }VIOutputFormat;
 #endif // !VINT_TYPES
 
+bool vi_f_fetch_deps(void);
+
 bool vi_f_build_virtual_interrupt(bool verbose, bool test, bool lsp, VIOutputFormat format);
 
 #ifdef VINT_IMPLEMENTATION
@@ -43,6 +45,31 @@ static bool vi_f_compile(Walk_Entry entry);
 static bool vi_f_check(void);
 static bool vi__f_check_append_sources(Walk_Entry entry);
 static bool vi_f_link(VIOutputFormat format);
+
+bool vi_f_fetch_deps(void)
+{
+    bool res = false;
+    Cmd cmd = {0};
+
+    if ( !vi_program_exsists_on_path("git") )
+    {
+        nob_log( ERROR, "git is not in your PATH. aborting");
+        res = false;
+        goto end;
+    }
+
+    cmd_append(&cmd, "git");
+    cmd_append(&cmd, "submodule");
+    cmd_append(&cmd, "update");
+    cmd_append(&cmd, "--init");
+    cmd_append(&cmd, "--recursive");
+
+    if ( !(res = cmd_run(&cmd)) ) goto end;
+
+end:
+    cmd_free(cmd);
+    return res;
+}
 
 bool vi_f_build_virtual_interrupt(bool verbose, bool test, bool lsp, VIOutputFormat format)
 {
