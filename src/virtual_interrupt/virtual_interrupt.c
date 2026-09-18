@@ -15,6 +15,7 @@
 
 #include "logger.h"
 #include "minheap/minheap.h"
+#include "workers/base.h"
 #include "workers/dispatcher.h"
 #include "workers/workers.h"
 #include "irq_workers_list.h"
@@ -312,41 +313,36 @@ static void* _th_dispatcher(void* arg)
         log_err("failed to disable signals");
     }
 
+    if ( _vi_enable_signal(VISignals_Suspend) != VIError_None )
+    {
+        log_err("error enabling signal: %s\n", _vi_get_signal_name(VISignals_Suspend));
+    }
+
 //========================================logic=================================================
     while( true )
     {
 start_dispatcher_loop:
         //waiting for something to do
-        if ( vi_dispatcher_get_requests(dispatcher->dispatcher) == 0 )
+        log(
+                "waiting for something to do: read: %ld, write: %ld, wamr_exception:--%s--",
+                atomic_load(&dispatcher->channel_ready_ureq.read),
+                atomic_load(&dispatcher->channel_ready_ureq.write),
+                _vi_get_wamr_exception()
+           );
+
+        while ( vi_dispatcher_get_requests(dispatcher->dispatcher) == 0 )
         {
-            log(
-                    "waiting for something to do: read: %ld, write: %ld, wamr_exception:--%s--",
-                    atomic_load(&dispatcher->channel_ready_ureq.read),
-                    atomic_load(&dispatcher->channel_ready_ureq.write),
-                    _vi_get_wamr_exception()
-               );
             vi_worker_status_set_working_mode(&dispatcher->dispatcher->base, WorkerStatus_Suspended);
-
-            if ( _vi_enable_signal(VISignals_Suspend) != VIError_None )
-            {
-                log_err("error enabling signal: %s\n", _vi_get_signal_name(VISignals_Suspend));
-            }
-
-            if ( _vi_enable_signal(VISignals_Resume) != VIError_None )
-            {
-                log_err("error enabling signal: %s\n", _vi_get_signal_name(VISignals_Resume));
-            }
-
             vi_worker_status_self_suspend();
-
-            if ( _vi_disable_all_signals() != VIError_None )
-            {
-                log_err("failed to disable signals");
-            }
-
-            vi_worker_status_set_working_mode(&dispatcher->dispatcher->base, WorkerStatus_Working);
-            log("woke up");
         }
+
+        if ( _vi_disable_all_signals() != VIError_None )
+        {
+            log_err("failed to disable signals");
+        }
+
+        vi_worker_status_set_working_mode(&dispatcher->dispatcher->base, WorkerStatus_Working);
+        log("woke up");
 
         if ( !atomic_load(&dispatcher->dispatcher->run) )
         {
@@ -372,20 +368,21 @@ start_dispatcher_loop:
         //old interrupt ended, unwinding execution to find suspended interrupt if it exists to
         //resume it
         bool worker_finish  = false;
-        log("checking if worker finished: current depth: %zu",
-                dispatcher->executing_worker);
+        log("checking if worker finished: current depth: %zu", dispatcher->executing_worker);
         while( dispatcher->executing_worker )
         {
             old_worker = _get_active_worker(dispatcher);
-            if(
-                    old_worker &&
-                    vi_irq_worker_get_mode(old_worker) == WorkerStatus_Done
-              )
+
+            log("old worker (%zu), status: %s",
+                    dispatcher->executing_worker,
+                    worker_status_to_str(vi_irq_worker_get_mode(old_worker))
+               );
+
+            if( old_worker && vi_irq_worker_get_mode(old_worker) == WorkerStatus_Done )
             {
                 dispatcher->executing_worker--;
                 worker_finish  = true;
-                log("doing the stuck unwinding: current depth %zu",
-                        dispatcher->executing_worker);
+                log("doing the stuck unwinding: current depth %zu", dispatcher->executing_worker);
             }
             else if( worker_finish ) //resume stopped worker
             {
@@ -464,7 +461,7 @@ start_dispatcher_loop:
 
             //start new thread (i+1)
             log("starting new worker: %zu", dispatcher->executing_worker);
-            if ( vi_irq_worker_resume(new_worker) != VIError_None )
+            if ( vi_irq_worker_start(new_worker) != VIError_None )
             {
                 log_err("failed to resume worker: %zu", dispatcher->executing_worker);
             }
@@ -508,7 +505,7 @@ start_dispatcher_loop:
             //start thread (1)
             log("starting new worker from wait queue. (Req: %zu, Worker: %zu)",
                     ureq, dispatcher->executing_worker);
-            if ( vi_irq_worker_resume(new_worker) != VIError_None )
+            if ( vi_irq_worker_start(new_worker) != VIError_None )
             {
                 log_err("failed to resume worker: %zu", dispatcher->executing_worker);
             }

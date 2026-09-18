@@ -1,5 +1,7 @@
 #include "irq_worker.h"
+#include "base.h"
 
+#include <assert.h>
 #include <pthread.h>
 #include <unistd.h>
 
@@ -16,10 +18,9 @@ VIError vi_irq_worker_init(
         wasm_module_inst_t module_inst
         )
 {
-    assert(status && p_funcs);
-
+    int err;
+    VIError res;
     atomic_int out;
-
     ThWorkersArg arg = 
     {
         .module_inst = module_inst,
@@ -27,15 +28,29 @@ VIError vi_irq_worker_init(
         .out = &out,
     };
 
+    assert(status && p_funcs);
+
     atomic_init(&out, -1);
 
     atomic_init(&status->func_index, 0);
     atomic_init(&status->run, true);
 
+    if ( (err = pthread_cond_init(&status->wait_work_cond, NULL)) )
+    {
+        _vi_set_errno(err);
+        return VIError_Libc;
+    }
+
+    if ( (err = pthread_mutex_init(&status->wait_work_mutex, NULL)) )
+    {
+        _vi_set_errno(err);
+        return VIError_Libc;
+    }
+
     status->p_funcs = p_funcs;
     status->p_dispatcher = p_status_dispatcher;
 
-    VIError res = vi_worker_status_init(&status->base, _th_irq_worker, &arg);
+    res = vi_worker_status_init(&status->base, _th_irq_worker, &arg);
 
     if ( res != VIError_None )
     {
@@ -62,17 +77,72 @@ WorkerStatus vi_irq_worker_get_mode(VIIrqWorkerStatus* const restrict status)
     return vi_worker_status_get_working_mode(&status->base);
 }
 
+VIError vi_irq_worker_start(VIIrqWorkerStatus* const restrict status)
+{
+    int err;
+    assert(status);
+
+    if ( vi_irq_worker_get_mode(status) == WorkerStatus_Done )
+    {
+        if ( (err=pthread_mutex_lock(&status->wait_work_mutex)) != 0 ) goto fail;
+
+        if ( (err=pthread_cond_signal(&status->wait_work_cond)) != 0 ) goto fail;
+
+        if ( (err=pthread_mutex_unlock(&status->wait_work_mutex)) != 0 ) goto fail;
+    }
+
+    return VIError_None;
+
+fail:
+    _vi_set_errno(err);
+    return VIError_Libc;
+}
+
 VIError vi_irq_worker_suspend(VIIrqWorkerStatus* const restrict status)
 {
+    char log_buffer[48] = {0};
     assert(status);
+
+    const WorkerStatus wc = vi_irq_worker_get_mode(status);
+
+    if ( wc != WorkerStatus_Working )
+    {
+        log_warn("trying to suspend from status: %s, ignoring", worker_status_to_str(wc));
+        return VIError_None;
+    }
+
     return vi_worker_status_suspend(&status->base);
 }
 
+
 VIError vi_irq_worker_resume(VIIrqWorkerStatus* const restrict status)
 {
+    VIError res;
+    int err;
+
     assert(status);
 
-    return vi_worker_status_resume(&status->base);
+    if ( vi_irq_worker_get_mode(status) == WorkerStatus_Done )
+    {
+        if ( (err=pthread_mutex_lock(&status->wait_work_mutex)) != 0 ) goto fail;
+
+        if ( (err=pthread_cond_signal(&status->wait_work_cond)) != 0 ) goto fail;
+
+        if ( (err=pthread_mutex_unlock(&status->wait_work_mutex)) != 0 ) goto fail;
+
+        res = VIError_None;
+    }
+    else
+    {
+        res = vi_worker_status_resume(&status->base);
+    }
+
+    return res;
+
+fail:
+    _vi_set_errno(err);
+    res = VIError_Libc;
+    return res;
 }
 
 void vi_irq_worker_destroy(VIIrqWorkerStatus* const restrict status)
@@ -115,6 +185,9 @@ static void* _th_irq_worker(void* arg)
     wasm_module_inst_t module_inst = th_arg.module_inst;
     char log_buffer[128] = {0};
     bool fail = false;
+    int err =0;
+
+    assert(th_arg.status->p_dispatcher);
 
 //========================================init=================================================
     wasm_runtime_init_thread_env();
@@ -141,14 +214,20 @@ static void* _th_irq_worker(void* arg)
     }
 
     atomic_store(th_arg.out, res);
+    vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Done);
 
 //=======================================logic=================================================
     while( 1 )
     {
-        assert(th_arg.status->p_dispatcher);
+        err = pthread_mutex_lock(&th_arg.status->wait_work_mutex);
+        assert(err == 0);
 
-        vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Done);
-        vi_worker_status_self_suspend();
+        err = pthread_cond_wait(&th_arg.status->wait_work_cond, &th_arg.status->wait_work_mutex);
+        assert(err == 0);
+        vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Working);
+
+        err = pthread_mutex_unlock(&th_arg.status->wait_work_mutex);
+        assert(err == 0);
 
         if ( !atomic_load(&th_arg.status->run) )
         {
@@ -159,7 +238,6 @@ static void* _th_irq_worker(void* arg)
         size_t func_index = atomic_load(&status->func_index);
 
         log("calling func: %zu", func_index);
-        vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Working);
 
         if ( status->p_funcs && status->p_funcs[func_index] )
         {
@@ -175,6 +253,7 @@ static void* _th_irq_worker(void* arg)
 
         log("finshed func: %zu", func_index);
 
+        vi_worker_status_set_working_mode(&th_arg.status->base, WorkerStatus_Done);
         if ( (res = vi_dispatcher_status_signal(th_arg.status->p_dispatcher)) )
         {
             log_err("failed signaling the dispatcher: %s", vi_error_to_str(res));

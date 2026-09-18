@@ -1,5 +1,7 @@
 #pragma once
 
+#include <pthread.h>
+
 #include "dispatcher.h"
 #include "../common.h"
 #include "../span/span.h"
@@ -11,6 +13,9 @@ typedef struct
 {
     VIWorkerStatus base;
     VIDispatcherStatus *p_dispatcher;
+
+    pthread_cond_t wait_work_cond;
+    pthread_mutex_t wait_work_mutex;
 
     IrqFuncHandler* p_funcs;
     atomic_size_t func_index;
@@ -39,6 +44,7 @@ VI_RESULT_TYPE(VIError) vi_irq_worker_init(
         wasm_module_inst_t module_inst
         ) ;
 WorkerStatus vi_irq_worker_get_mode(VIIrqWorkerStatus* const restrict status);
+VI_RESULT_TYPE(VIError) vi_irq_worker_start(VIIrqWorkerStatus* const restrict status);
 VI_RESULT_TYPE(VIError) vi_irq_worker_suspend(VIIrqWorkerStatus* const restrict status);
 VI_RESULT_TYPE(VIError) vi_irq_worker_resume(VIIrqWorkerStatus* const restrict status);
 void vi_irq_worker_destroy(VIIrqWorkerStatus* const restrict status);
