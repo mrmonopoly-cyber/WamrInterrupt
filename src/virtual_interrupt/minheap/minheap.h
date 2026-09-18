@@ -125,9 +125,10 @@
 
 #ifdef ENABLE_TESTS
 #include <stdio.h>
+#undef printf
 
 __attribute__((__constructor__))
-void minheap_test()
+void minheap_test(void)
 {
     typedef MINHEAP_TEMPLATE(size_t, 12) MinheapChar;
 
