@@ -9,6 +9,7 @@
 #include "span/span.h"
 #include "wasm_export.h"
 #include "spscq/spscq.h"
+#include "workers/dispatcher.h"
 #include "workers/workers.h"
 
 #include "common.h"
@@ -128,7 +129,7 @@ static inline size_t debug_vidispatcher_n_requests(const VIDispatcher* const res
 
     if ( dispatcher )
     {
-        res = atomic_load(&dispatcher->dispatcher->n_requests);
+        res = vi_dispatcher_get_requests(dispatcher->dispatcher);
     }
 
     return res;

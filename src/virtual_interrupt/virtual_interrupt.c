@@ -15,6 +15,7 @@
 
 #include "logger.h"
 #include "minheap/minheap.h"
+#include "workers/dispatcher.h"
 #include "workers/workers.h"
 #include "irq_workers_list.h"
 
@@ -316,7 +317,7 @@ static void* _th_dispatcher(void* arg)
     {
 start_dispatcher_loop:
         //waiting for something to do
-        if ( atomic_load(&dispatcher->dispatcher->n_requests) == 0 )
+        if ( vi_dispatcher_get_requests(dispatcher->dispatcher) == 0 )
         {
             log(
                     "waiting for something to do: read: %ld, write: %ld, wamr_exception:--%s--",
@@ -353,13 +354,13 @@ start_dispatcher_loop:
             break;
         }
 
-        if ( atomic_load(&dispatcher->dispatcher->n_requests) == 0 )
+        if ( vi_dispatcher_get_requests(dispatcher->dispatcher) == 0 )
         {
             log_err("INVARIANT NOT RESPECTED: n_requests == 0");
             continue;
         }
 
-        atomic_fetch_sub(&dispatcher->dispatcher->n_requests, 1);
+        vi_dispatcher_consume_request(dispatcher->dispatcher);
 
         if ( !atomic_load(&dispatcher->dispatcher->run) )
         {

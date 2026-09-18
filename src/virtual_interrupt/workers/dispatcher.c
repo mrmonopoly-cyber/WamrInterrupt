@@ -13,13 +13,6 @@ VIError vi_dispatcher_status_init(VIDispatcherStatus* const restrict status,
     return vi_worker_status_init(&status->base, dispatcher_fun , arg);
 }
 
-VIError vi_dispatcher_status_signal(VIDispatcherStatus* const restrict status)
-{
-    assert(status);
-    atomic_fetch_add(&status->n_requests, 1);
-    return vi_worker_status_signal(&status->base);
-}
-
 void vi_dispatcher_status_destroy(VIDispatcherStatus* const restrict status)
 {
     assert(status);
