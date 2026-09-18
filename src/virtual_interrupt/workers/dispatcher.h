@@ -12,10 +12,10 @@ typedef struct
 }VIDispatcherStatus;
 
 //============================================declarations========================================
-VIError vi_dispatcher_status_init(VIDispatcherStatus* const restrict status,
+VI_RESULT_TYPE(VIError) vi_dispatcher_status_init(VIDispatcherStatus* const restrict status,
         void* (*dispatcher_fun) (void* arg),
-        void* arg) VI_RESULT_TYPE;
+        void* arg);
 
-VIError vi_dispatcher_status_signal(VIDispatcherStatus* const restrict status) VI_RESULT_TYPE;
+VI_RESULT_TYPE(VIError) vi_dispatcher_status_signal(VIDispatcherStatus* const restrict status);
 void vi_dispatcher_status_destroy(VIDispatcherStatus* const restrict status);
 

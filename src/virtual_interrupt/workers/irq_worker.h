@@ -32,13 +32,13 @@ typedef SPAN_TEMPLATE(VIIrqWorkerStatus) VISpanWorkerStatus;
 //==============================================declarations======================================
 void vi_irq_worker_destroy(VIIrqWorkerStatus* const restrict status);
 
-VIError vi_irq_worker_init(
+VI_RESULT_TYPE(VIError) vi_irq_worker_init(
         VIIrqWorkerStatus* const restrict status,
         VIDispatcherStatus* const restrict p_status_dispatcher,
         IrqFuncHandler* p_funcs,
         wasm_module_inst_t module_inst
-        ) VI_RESULT_TYPE;
+        ) ;
 WorkerStatus vi_irq_worker_get_mode(VIIrqWorkerStatus* const restrict status);
-VIError vi_irq_worker_suspend(VIIrqWorkerStatus* const restrict status) VI_RESULT_TYPE;
-VIError vi_irq_worker_resume(VIIrqWorkerStatus* const restrict status) VI_RESULT_TYPE;
+VI_RESULT_TYPE(VIError) vi_irq_worker_suspend(VIIrqWorkerStatus* const restrict status);
+VI_RESULT_TYPE(VIError) vi_irq_worker_resume(VIIrqWorkerStatus* const restrict status);
 void vi_irq_worker_destroy(VIIrqWorkerStatus* const restrict status);

@@ -18,7 +18,7 @@
 #define VI_DEFAULT_SIG_SUSPEND  SIGPOLL
 #define VI_DEFAULT_SIG_RESUME   SIGCONT
 
-#define VI_RESULT_TYPE                  __attribute__((warn_unused_result))
+#define VI_RESULT_TYPE(T)                  T __attribute__((warn_unused_result))
 
 #define VI_ASYNC_SIGNAL_HANDLER         __attribute__((annotate("async_signal_handler")))
 
@@ -56,11 +56,11 @@ VI_COMMON_PREFIX void _vi_set_wamr_exception(wasm_module_inst_t module_inst);
 VI_COMMON_PREFIX bool _vi_exists_wamr_exception(void);
 VI_COMMON_PREFIX const char* _vi_get_wamr_exception(void);
 VI_COMMON_PREFIX void _vi_clear_wamr_exception(void);
-VI_COMMON_PREFIX VIError _vi_set_signal(VISignals signal, int val) VI_RESULT_TYPE;
+VI_COMMON_PREFIX VI_RESULT_TYPE(VIError) _vi_set_signal(VISignals signal, int val);
 VI_COMMON_PREFIX VISignals _vi_get_signal(VISignals signal);
 VI_COMMON_PREFIX const char* _vi_get_signal_name(VISignals signal);
-VI_COMMON_PREFIX VIError _vi_enable_signal(VISignals signal) VI_RESULT_TYPE;
-VI_COMMON_PREFIX VIError _vi_disable_all_signals(void) VI_RESULT_TYPE;
+VI_COMMON_PREFIX VI_RESULT_TYPE(VIError) _vi_enable_signal(VISignals signal);
+VI_COMMON_PREFIX VI_RESULT_TYPE(VIError) _vi_disable_all_signals(void);
 VI_COMMON_PREFIX const char* vi_error_to_str(const VIError err);
 
 

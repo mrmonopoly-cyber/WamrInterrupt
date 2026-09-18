@@ -1,4 +1,3 @@
-#pragma once
 
 #include <assert.h>
 #include <stdatomic.h>
@@ -69,28 +68,28 @@ typedef struct
     }
 
 
-VIError vidispatcher_init_full(
+VI_RESULT_TYPE(VIError) vidispatcher_init_full(
         VIDispatcher* const restrict dispatcher,
         wasm_module_inst_t module_inst,
         wasm_function_inst_t main_f,
         const size_t n_lines,
-        const VIDispatcherConf conf) VI_RESULT_TYPE;
+        const VIDispatcherConf conf);
 
-VIError vidispatcher_init(
+VI_RESULT_TYPE(VIError) vidispatcher_init(
         VIDispatcher* const restrict dispatcher,
         wasm_module_inst_t module_inst,
         wasm_function_inst_t main_f,
         const size_t n_lines
-        ) VI_RESULT_TYPE;
+        );
 
-VIError vidispatcher_assign_irq_to_line(
+VI_RESULT_TYPE(VIError) vidispatcher_assign_irq_to_line(
         VIDispatcher* const restrict dispatcher,
         const IrqFuncHandler irq_handler,
-        const size_t line) VI_RESULT_TYPE;
+        const size_t line);
 
-VIError vidispatcher_start(VIDispatcher* const restrict dispatcher) VI_RESULT_TYPE;
+VI_RESULT_TYPE(VIError) vidispatcher_start(VIDispatcher* const restrict dispatcher);
 
-VIError vidispatcher_trigger_interrupt(VIDispatcher* const restrict dispatcher, const IrqLine line) VI_RESULT_TYPE;
+VI_RESULT_TYPE(VIError) vidispatcher_trigger_interrupt(VIDispatcher* const restrict dispatcher, const IrqLine line);
 
 void vidispatcher_destroy(VIDispatcher* const restrict dispatcher);
 
@@ -114,9 +113,9 @@ typedef struct
 
 
 //=====================================declarations==============================================
-VIError debug_vidispatcher_get_workers_status(
+VI_RESULT_TYPE(VIError) debug_vidispatcher_get_workers_status(
         const VIDispatcher* const restrict dispatcher,
-        VIDWorkerStatus** out, size_t* n_out) VI_RESULT_TYPE;
+        VIDWorkerStatus** out, size_t* n_out);
 static inline size_t debug_vidispatcher_n_requests(const VIDispatcher* const restrict dispatcher);
 
 static inline const char* debug_vidispatcher_worker_id_to_str(const VIDWorkerID id);
