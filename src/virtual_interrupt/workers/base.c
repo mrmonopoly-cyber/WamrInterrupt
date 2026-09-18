@@ -2,6 +2,7 @@
 
 #include <signal.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <unistd.h>
 
 //====================================implementation==============================================
@@ -31,7 +32,7 @@ VIError vi_worker_status_init(
     return VIError_None;
 }
 
-void vi_worker_status_suspend(VIWorkerStatus* const restrict status)
+VIError vi_worker_status_suspend(VIWorkerStatus* const restrict status)
 {
     assert( status );
 
@@ -42,16 +43,25 @@ void vi_worker_status_suspend(VIWorkerStatus* const restrict status)
         //not giving enough time to the kernel to do the context switch for the threads.
         //For now a delay has been added to limit the damage on such cases but it's NOT a solution
         usleep(1000); //HACK: to give time to the kernel to do the context switch
+        return VIError_None;
     }
+
+    return VIError_Async;
 }
 
-void vi_worker_status_resume(VIWorkerStatus* const restrict status)
+VIError vi_worker_status_resume(VIWorkerStatus* const restrict status)
 {
     assert( status );
+    
+    if ( atomic_exchange(&status->working_status, WorkerStatus_Working) != WorkerStatus_Working )
+    {
+        atomic_store(&status->working_status, WorkerStatus_Working);
+        pthread_kill(status->th_id, _vi_get_signal(VISignals_Resume));
+        usleep(1000); //HACK: to give time to the kernel to do the context switch
+        return VIError_None;
+    }
 
-    atomic_store(&status->working_status, WorkerStatus_Working);
-    pthread_kill(status->th_id, _vi_get_signal(VISignals_Resume));
-    usleep(1000); //HACK: to give time to the kernel to do the context switch
+    return VIError_Async;
 }
 
 void vi_worker_status_set_working_mode(
@@ -98,7 +108,7 @@ void vi_worker_status_destroy(VIWorkerStatus* const restrict status)
 {
     assert(status);
 
-    vi_worker_status_resume(status);
+    (void) vi_worker_status_resume(status);
     pthread_cancel(status->th_id);
     pthread_join(status->th_id, NULL);
 }

@@ -34,7 +34,9 @@
 //=====================================function declarations======================================
 static void* _th_dispatcher(void* arg);
 
+VI_ASYNC_SIGNAL_HANDLER
 static void _worker_suspend_signal_handler(int signal);
+VI_ASYNC_SIGNAL_HANDLER
 static void _worker_resume_signal_handler(int signal);
 
 static inline VIIrqWorkerStatus* _get_active_worker(const VIDispatcher* const restrict d);
@@ -216,7 +218,10 @@ VIError vidispatcher_assign_irq_to_line(
 
 VIError vidispatcher_start(VIDispatcher* const restrict dispatcher)
 {
+    const size_t wait_millis = 1;
+
     char log_buffer[64] = {0};
+    VIError res;
 
     if ( !dispatcher )
     {
@@ -224,30 +229,34 @@ VIError vidispatcher_start(VIDispatcher* const restrict dispatcher)
     }
 
     vi_worker_status_set_working_mode(&dispatcher->dispatcher.base, WorkerStatus_Init);
+
     log("starting dispatcher");
-    vi_main_logic_resume(&dispatcher->main_fun_status);
-
-    while( vi_worker_status_get_working_mode(&dispatcher->main_fun_status.base) == WorkerStatus_Init )
+    VI_LOOP_TRY(counter, (res = vi_main_logic_resume(&dispatcher->main_fun_status)) != VIError_None )
     {
-        log("%s waiting main thread start", __func__);
+        log_warn("try %zu: failed starting main logic: %s. retrying after %zu millis",
+                counter, vi_error_to_str(res), wait_millis );
+        usleep(wait_millis * 1000);
+    }
+
+    if ( res != VIError_None )
+    {
+        return res;
+    }
+
+    assert( vi_main_logic_get_mode(&dispatcher->main_fun_status) == WorkerStatus_Working );
+
+    res =  vi_dispatcher_status_init(&dispatcher->dispatcher, _th_dispatcher, dispatcher);
+
+    VI_LOOP_TRY(
+            counter,
+            vi_worker_status_get_working_mode(&dispatcher->dispatcher.base) == WorkerStatus_Init
+            )
+    {
+        log("try %zu: %s waiting dispatcher thread to start", counter, __func__);
         usleep(1000 * 1000);
     }
 
-    int err =  vi_dispatcher_status_init(&dispatcher->dispatcher, _th_dispatcher, dispatcher);
-
-    while( vi_worker_status_get_working_mode(&dispatcher->dispatcher.base) == WorkerStatus_Init )
-    {
-        log("%s waiting dispatcher thread to start", __func__);
-        usleep(1000 * 1000);
-    }
-
-    if( err < 0 )
-    {
-        _vi_set_errno(err);
-        return VIError_Libc;
-    }
-
-    return VIError_None;
+    return res;
 }
 
 VIError vidispatcher_trigger_interrupt(VIDispatcher* const restrict dispatcher, const IrqLine line)

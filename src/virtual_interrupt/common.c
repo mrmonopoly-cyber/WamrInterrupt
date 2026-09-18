@@ -135,8 +135,10 @@ VI_COMMON_PREFIX const char* vi_error_to_str(const VIError err)
         case VIError_InvalidInput:          return "invalid input";
         case VIError_Queue:                 return "Internal Queue error: Full?";
         case VIError_WAMR:                  return "wamr error";
+        case VIError_Async:                 return "failed to exec async operation";
         case VIError_Libc:                  return "libc error";
-    }
+          break;
+        }
 
     assert(0 && "unreachable");
 }

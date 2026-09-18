@@ -39,6 +39,6 @@ VIError vi_irq_worker_init(
         wasm_module_inst_t module_inst
         ) VI_RESULT_TYPE;
 WorkerStatus vi_irq_worker_get_mode(VIIrqWorkerStatus* const restrict status);
-void vi_irq_worker_suspend(VIIrqWorkerStatus* const restrict status);
-void vi_irq_worker_resume(VIIrqWorkerStatus* const restrict status);
+VIError vi_irq_worker_suspend(VIIrqWorkerStatus* const restrict status) VI_RESULT_TYPE;
+VIError vi_irq_worker_resume(VIIrqWorkerStatus* const restrict status) VI_RESULT_TYPE;
 void vi_irq_worker_destroy(VIIrqWorkerStatus* const restrict status);

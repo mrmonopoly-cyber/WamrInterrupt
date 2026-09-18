@@ -62,17 +62,17 @@ WorkerStatus vi_irq_worker_get_mode(VIIrqWorkerStatus* const restrict status)
     return vi_worker_status_get_working_mode(&status->base);
 }
 
-void vi_irq_worker_suspend(VIIrqWorkerStatus* const restrict status)
+VIError vi_irq_worker_suspend(VIIrqWorkerStatus* const restrict status)
 {
     assert(status);
-    vi_worker_status_suspend(&status->base);
+    return vi_worker_status_suspend(&status->base);
 }
 
-void vi_irq_worker_resume(VIIrqWorkerStatus* const restrict status)
+VIError vi_irq_worker_resume(VIIrqWorkerStatus* const restrict status)
 {
     assert(status);
 
-    vi_worker_status_resume(&status->base);
+    return vi_worker_status_resume(&status->base);
 }
 
 void vi_irq_worker_destroy(VIIrqWorkerStatus* const restrict status)
@@ -80,7 +80,7 @@ void vi_irq_worker_destroy(VIIrqWorkerStatus* const restrict status)
     assert(status);
 
     atomic_store(&status->run, false);
-    vi_irq_worker_resume(status);
+    (void)vi_irq_worker_resume(status);
 
     while( vi_irq_worker_get_mode(status) != WorkerStatus_Dead )
     {

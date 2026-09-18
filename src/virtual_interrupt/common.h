@@ -18,7 +18,16 @@
 #define VI_DEFAULT_SIG_SUSPEND  SIGPOLL
 #define VI_DEFAULT_SIG_RESUME   SIGCONT
 
-#define VI_RESULT_TYPE __attribute__((warn_unused_result))
+#define VI_RESULT_TYPE                  __attribute__((warn_unused_result))
+
+#define VI_ASYNC_SIGNAL_HANDLER         __attribute__((annotate("async_signal_handler")))
+
+#define VI_ASYNC_STATE                  __attribute__((capability("atomic_execution_state")))
+#define VI_ASYNC_SETS_STATE(ret, ptr)   __attribute__((try_acquire_capability((ret), (ptr))))
+
+#define VI_MAX_RETRIES (32ULL)
+#define VI_LOOP_TRY(COUNTER_NAME, COND) \
+    for( size_t (COUNTER_NAME) = 0; (COUNTER_NAME) < VI_MAX_RETRIES && (COND); (COUNTER_NAME)++ )
 
 //============================================types============================================
 
@@ -27,6 +36,7 @@ typedef enum __VirtualInterruptError
     VIError_None=0,
     VIError_InvalidInput,
     VIError_Queue,
+    VIError_Async,
     VIError_WAMR,
     VIError_Libc,           /* check errno */
 }VIError;

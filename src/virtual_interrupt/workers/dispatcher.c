@@ -25,7 +25,7 @@ void vi_dispatcher_status_destroy(VIDispatcherStatus* const restrict status)
     assert(status);
 
     atomic_store(&status->run, false);
-    vi_worker_status_resume(&status->base);
+    (void) vi_worker_status_resume(&status->base);
 
     while( vi_worker_status_get_working_mode(&status->base) != WorkerStatus_Dead )
     {
