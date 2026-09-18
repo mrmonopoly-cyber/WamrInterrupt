@@ -21,7 +21,7 @@ typedef enum
 }VIOutputFormat;
 #endif // !VINT_TYPES
 
-bool vi_f_build_virtual_interrupt(bool verbose, bool test, VIOutputFormat format);
+bool vi_f_build_virtual_interrupt(bool verbose, bool test, bool lsp, VIOutputFormat format);
 
 #ifdef VINT_IMPLEMENTATION
 #include "nob.h"
@@ -36,6 +36,7 @@ typedef struct
 {
     Procs* procs;
     bool test;
+    bool lsp;
 }FCompileArgs;
 
 static bool vi_f_compile(Walk_Entry entry);
@@ -43,14 +44,17 @@ static bool vi_f_check(void);
 static bool vi__f_check_append_sources(Walk_Entry entry);
 static bool vi_f_link(VIOutputFormat format);
 
-bool vi_f_build_virtual_interrupt(bool verbose, bool test, VIOutputFormat format)
+bool vi_f_build_virtual_interrupt(bool verbose, bool test, bool lsp, VIOutputFormat format)
 {
     bool res=false;
     Procs procs = {0};
+    Procs* procs_ptr = !lsp ? &procs : NULL;
+
     FCompileArgs args=
     {
-        .procs = &procs,
+        .procs = procs_ptr,
         .test = test,
+        .lsp = lsp,
     };
 
     if ( !(res = vi_f_check()) )
@@ -59,7 +63,7 @@ bool vi_f_build_virtual_interrupt(bool verbose, bool test, VIOutputFormat format
     }
 
     //wamr
-    if( !(f_build_wamr(verbose, &procs)) )
+    if( !(f_build_wamr(verbose, procs_ptr)) )
     {
         goto end;
     }
@@ -151,6 +155,29 @@ static bool vi_f_compile(Walk_Entry entry)
     if(entry.type == FILE_REGULAR && !strcmp(suffix, ".c"))
     {
         const char* file_name = nob_temp_file_name(entry.path);
+
+        if ( args->lsp )
+        {
+            if ( !vi_program_exsists_on_path("bear") )
+            {
+                nob_log(ERROR, "bear is not present on your PATH. aborting");
+                return false;
+            }
+
+            cmd_append(&cmd, "bear");
+            cmd_append(&cmd, "--output", "./compile_commands.json");
+
+            if ( file_exists("compile_commands.json") )
+            {
+                cmd_append(&cmd, "--append");
+            }
+            else
+            {
+                cmd_append(&cmd, "--overwrite");
+            }
+
+            cmd_append(&cmd, "--");
+        }
 
         cmd_append(&cmd, CC);
         vi_apply_all_defualt_compile_opts(&cmd);

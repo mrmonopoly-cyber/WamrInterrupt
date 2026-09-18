@@ -7,7 +7,7 @@
 //==================================macros======================================================
 #define ArraySize(ARR) (sizeof(ARR)/sizeof(ARR[0]))
 
-#define CC "cc"
+#define CC "clang"
 
 #ifndef VI_PROJET_ROOT
 #pragma message "no VI_PROJET_ROOT passed using default value: \".\""
@@ -168,6 +168,7 @@ ArrayViewString vi_default_compiler_opts(void)
         "-ggdb",
         "-pedantic",
         "-fsanitize=address,undefined",
+        "-Wthread-safety",
         //add here your compiler options: -c, -ggdb, -O2, ...
     };
 

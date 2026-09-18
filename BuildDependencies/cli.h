@@ -11,6 +11,7 @@ typedef struct CCliUserArgs{
     bool run;
     bool build;
     bool clean;
+    bool lsp;
 }CliArgs;
 
 CLI_PREFIX bool cli_parse(CliArgs* args, const int argc, char** argv);
@@ -24,6 +25,7 @@ CCLI_PARSER_DECLARE(test);
 CCLI_PARSER_DECLARE(build);
 CCLI_PARSER_DECLARE(run);
 CCLI_PARSER_DECLARE(clean);
+CCLI_PARSER_DECLARE(clsp);
 
 static const CCliArgDef defs[] = 
 {
@@ -62,6 +64,15 @@ static const CCliArgDef defs[] =
         .f_description = "clean the sources",
         .f_parser = CCLI_PARSER_NAME(clean),
     },
+
+    //--cfg_lsp, -clsp
+    {
+        .f_long = CCLI_LONG_FLAG(cfg_lsp),
+        .f_short = CCLI_SHORT_FLAG(clsp),
+        .f_args = CCLI_NO_ARG,
+        .f_description = "configure lsp",
+        .f_parser = CCLI_PARSER_NAME(clsp),
+    },
 };
 
 CLI_PREFIX void cli_default(CliArgs* const restrict args)
@@ -99,6 +110,14 @@ CCLI_PARSER_DECLARE_FULL(run, args, ctx)
 CCLI_PARSER_DECLARE_FULL(clean, args, ctx)
 {
     args->clean = true;
+    return CCliActionOK;
+}
+
+CCLI_PARSER_DECLARE_FULL(clsp, args, ctx)
+{
+    args->lsp = true;
+    args->build = true;
+    args->verbose = true;
     return CCliActionOK;
 }
 

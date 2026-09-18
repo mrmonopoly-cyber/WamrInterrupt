@@ -56,13 +56,20 @@ int main(int argc, char **argv)
     nob_log(INFO, "build directory: %s", BUILD_DIR);
     nob_log(INFO, "output file: %s", O_FILE);
 
+    if ( args.lsp )
+    {
+        walk_dir(BUILD_DIR, walk_delete, .post_order = true);
+        if ( file_exists(O_FILE) ) delete_file(O_FILE);
+        if ( file_exists("compile_commands.json") ) delete_file("compile_commands.json");
+    }
+
     mkdir_if_not_exists(BUILD_DIR);
 
     if( args.build || args.run )
     {
         Cmd cmd = {0};
         const char* main_src = "src/launcher/main.c";
-        if ( !vi_f_build_virtual_interrupt(args.verbose, args.test, VIOutputFormat_StaticLib) )
+        if ( !vi_f_build_virtual_interrupt(args.verbose, args.test, args.lsp, VIOutputFormat_StaticLib) )
         {
             nob_log(ERROR, "failed building");
             return 1;
