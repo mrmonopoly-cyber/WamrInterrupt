@@ -89,6 +89,7 @@ static const CCliArgDef defs[] =
 CLI_PREFIX void cli_default(CliArgs* const restrict args)
 {
     args->test = false;
+    args->fetch = true;
     args->build = true;
     args->run = true;
 }
