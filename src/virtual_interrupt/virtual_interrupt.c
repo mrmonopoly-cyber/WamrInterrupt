@@ -436,8 +436,7 @@ start_dispatcher_loop:
                 }
                 else
                 {
-                    log("resuming suspended worker: %zu",
-                            dispatcher->executing_worker);
+                    log("resuming suspended worker: %zu", dispatcher->executing_worker);
                     if ( vi_irq_worker_resume(old_worker) != VIError_None )
                     {
                         log_err("failed to resume worker: %zu", dispatcher->executing_worker);
@@ -473,8 +472,7 @@ start_dispatcher_loop:
             //stop current worker (i)
             if( old_worker )
             {
-                log("suspending old worker: %zu",
-                        dispatcher->executing_worker - 1);
+                log("suspending old worker: %zu", dispatcher->executing_worker - 1);
                 if ( vi_irq_worker_suspend(old_worker) != VIError_None )
                 {
                     log_err("failed to suspend worker: %zu", dispatcher->executing_worker - 1);
