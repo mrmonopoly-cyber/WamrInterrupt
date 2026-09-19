@@ -33,8 +33,6 @@ VIError vi_worker_status_init(
         void* arg
         );
 
-VIError vi_worker_status_self_suspend(void);
-
 VI_RESULT_TYPE(VIError) vi_worker_status_suspend(VIWorkerStatus* const restrict status)
      VI_ASYNC_SETS_STATE(VIError_None, status);
 
@@ -44,16 +42,12 @@ VI_RESULT_TYPE(VIError) vi_worker_status_resume(VIWorkerStatus* const restrict s
 void vi_worker_status_set_working_mode(
         VIWorkerStatus* const restrict status,
         WorkerStatus wc);
+
+VIError vi_worker_status_self_suspend(void);
+
 WorkerStatus vi_worker_status_get_working_mode(const VIWorkerStatus* const restrict status);
 
-VI_RESULT_TYPE(VIError) vi_worker_status_signal(VIWorkerStatus* const restrict status) 
-    VI_ASYNC_SETS_STATE(VIError_None, status);
-
-VI_RESULT_TYPE(VIError) vi_worker_status_signal(VIWorkerStatus* const restrict status)
-    VI_ASYNC_SETS_STATE(VIError_None, status);
-
 void vi_worker_status_destroy(VIWorkerStatus* const restrict status);
-
 
 
 

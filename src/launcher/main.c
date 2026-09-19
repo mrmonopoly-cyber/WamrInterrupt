@@ -89,6 +89,27 @@ void new_board_set_executor(wasm_exec_env_t env, const Executor executor)
     wasm_runtime_end_blocking_op(env);
 }
 
+//INFO: to test if shallow copy works correctly and does not break things
+static inline VIDispatcher _create_move_virtual_interrupt(
+        wasm_module_inst_t module_inst,
+        wasm_function_inst_t main_func,
+        VIDispatcherConf vi_conf,
+        size_t n_irq_functions,
+        VIError* err
+        )
+{
+    VIDispatcher vi_dispatcher = {0};
+
+    *err = vidispatcher_init_full(
+            &vi_dispatcher,
+            module_inst,
+            main_func,
+            n_irq_functions,
+            vi_conf);
+
+    return vi_dispatcher;
+}
+
 int main(int argc, char *argv[])
 {
     const char* input_file = argv[1];
@@ -189,13 +210,14 @@ int main(int argc, char *argv[])
         GOTO_END_AND_CUSTOM_ERROR("failed loading board main");
     }
 
-    vi_err = vidispatcher_init_full(
-            &vi_dispatcher,
+    vi_dispatcher = _create_move_virtual_interrupt(
             module_inst,
             main_func,
+            vi_conf,
             ArraySize(irq_functions),
-            vi_conf
+            &vi_err
             );
+
     if ( vi_err != VIError_None )
     {
         GOTO_END_AND_CUSTOM_ERROR(vi_error_to_str(vi_err));

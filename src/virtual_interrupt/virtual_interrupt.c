@@ -56,7 +56,7 @@ VIError vidispatcher_init_full(
 {
     VIError res = VIError_None;
     IrqFuncHandler* funcs = NULL;
-    VIDispatcherStatus* dispatcher_status = NULL;
+    struct _VirtualInterruptNonMovableData* non_movable_data = NULL;
     const size_t depth = conf.depth;
     char log_buffer[128] = {0};
 
@@ -73,21 +73,23 @@ VIError vidispatcher_init_full(
         goto end;
     }
 
+    *dispatcher = (VIDispatcher){0};
+
 //========================================logger==================================================
     vi_log_file_init(conf.log_file_base_path);
 
 //==========================================init memory===========================================
+    non_movable_data = malloc(sizeof(*non_movable_data));
     funcs = malloc(n_lines * sizeof(*funcs));
-    dispatcher_status = malloc(sizeof(*dispatcher_status));
 
-    if ( !funcs || !dispatcher_status )
+    if ( !funcs || !non_movable_data)
     {
         _vi_set_errno(errno);
         goto end;
     }
 
 //======================================init queues===============================================
-    spscq_init(&dispatcher->channel_ready_ureq);
+    spscq_init(&non_movable_data->channel_ready_ureq);
     minheap_init(&dispatcher->minheap_ureq);
 
 //======================================init signals==============================================
@@ -135,7 +137,12 @@ VIError vidispatcher_init_full(
 
 //====================================init main function thread===============================
 
-    res = vi_main_logic_init(&dispatcher->main_fun_status, dispatcher_status, main_f, module_inst);
+    log("init main logic thread");
+    res = vi_main_logic_init(
+            &non_movable_data->main_fun_status,
+            &non_movable_data->dispatcher,
+            main_f,
+            module_inst);
     if ( res != VIError_None) 
     {
         goto end;
@@ -144,26 +151,25 @@ VIError vidispatcher_init_full(
 //======================================init workers==========================================
     {
         SpanError out_status; 
-        VISpanWorkerStatus workers = span_cfg_init(depth);
-        span_resize(&workers, depth, &out_status);
-        if ( out_status != SpanError_None || span_len(&workers) != depth ) 
+        non_movable_data->workers = (VISpanWorkerStatus) span_cfg_init(depth);
+        span_resize(&non_movable_data->workers, depth, &out_status);
+        if ( out_status != SpanError_None || span_len(&non_movable_data->workers) != depth ) 
         {
             res = VIError_Queue;
             goto end;
         }
-        dispatcher->workers = workers;
     }
 
     for(size_t i=1; i<=depth; i++)
     {
         log("init worker: %zu", i);
-        VIIrqWorkerStatus* worker = _get_worker(&dispatcher->workers, i);
+        VIIrqWorkerStatus* worker = _get_worker(&non_movable_data->workers, i);
         assert( worker );
 
         if ((
                     res = vi_irq_worker_init(
                         worker,
-                        dispatcher_status,
+                        &non_movable_data->dispatcher,
                         funcs,
                         module_inst)
             ) != VIError_None )
@@ -178,7 +184,7 @@ VIError vidispatcher_init_full(
     dispatcher->n_funcs = n_lines;
     dispatcher->funcs = funcs;
     dispatcher->module_inst = module_inst;
-    dispatcher->dispatcher = dispatcher_status;
+    dispatcher->non_movable_data = non_movable_data;
 
     return res;
 
@@ -187,7 +193,6 @@ end:
     assert(res != VIError_None);
 
     vidispatcher_destroy(dispatcher);
-    if (funcs) free(funcs);
 
     return res;
 }
@@ -233,16 +238,20 @@ VIError vidispatcher_start(VIDispatcher* const restrict dispatcher)
         return VIError_InvalidInput;
     }
 
+    struct _VirtualInterruptNonMovableData* data = dispatcher->non_movable_data;
+
+    assert(data);
+
     log("starting dispatcher");
-    vi_main_logic_resume(&dispatcher->main_fun_status);
+    vi_main_logic_resume(&data->main_fun_status);
 
-    assert( vi_main_logic_get_mode(&dispatcher->main_fun_status) == WorkerStatus_Working );
+    assert( vi_main_logic_get_mode(&data->main_fun_status) == WorkerStatus_Working );
 
-    res =  vi_dispatcher_status_init(dispatcher->dispatcher, _th_dispatcher, dispatcher);
+    res =  vi_dispatcher_status_init(&data->dispatcher, _th_dispatcher, dispatcher);
 
     VI_LOOP_TRY(
             counter,
-            vi_worker_status_get_working_mode(&dispatcher->dispatcher->base) == WorkerStatus_Init
+            vi_worker_status_get_working_mode(&data->dispatcher.base) == WorkerStatus_Init
             )
     {
         log("try %zu: %s waiting dispatcher thread to start", counter, __func__);
@@ -259,11 +268,15 @@ VIError vidispatcher_trigger_interrupt(VIDispatcher* const restrict dispatcher, 
 
     if ( !dispatcher || line >= dispatcher->n_funcs ) return VIError_InvalidInput;
 
-    spscq_push(&dispatcher->channel_ready_ureq, line, &spsc_op_ok);
+    struct _VirtualInterruptNonMovableData* data = dispatcher->non_movable_data;
+
+    assert(data);
+
+    spscq_push(&data->channel_ready_ureq, line, &spsc_op_ok);
     if ( !spsc_op_ok ) return VIError_Queue;
 
     log("user triggered new interrupt on line: %zu", line);
-    return vi_dispatcher_status_signal(dispatcher->dispatcher);
+    return vi_dispatcher_status_signal(&data->dispatcher);
 }
 
 void vidispatcher_destroy(VIDispatcher* const restrict dispatcher)
@@ -272,27 +285,33 @@ void vidispatcher_destroy(VIDispatcher* const restrict dispatcher)
 
     if( dispatcher )
     {
-        log("destroying main thread");
-        vi_main_logic_destroy(&dispatcher->main_fun_status);
-
-        log("destroying dispatcher");
-        vi_dispatcher_status_destroy(dispatcher->dispatcher);
-
-        FOR_EACH_IRQ_WORKER_INDEX(i, &dispatcher->workers)
+        if ( dispatcher->non_movable_data )
         {
-            VIIrqWorkerStatus* worker = _get_worker(&dispatcher->workers, i);
-            WorkerStatus w_status = vi_irq_worker_get_mode(worker);
+            struct _VirtualInterruptNonMovableData* data = dispatcher->non_movable_data;
 
-            if ( w_status != WorkerStatus_Init && w_status != WorkerStatus_Dead )
+            log("destroying main thread");
+            vi_main_logic_destroy(&data->main_fun_status);
+
+            log("destroying dispatcher");
+            vi_dispatcher_status_destroy(&data->dispatcher);
+
+            FOR_EACH_IRQ_WORKER_INDEX(i, &data->workers)
             {
-                log("destroying workder: %zu", i);
-                vi_irq_worker_destroy(worker);
+                VIIrqWorkerStatus* worker = _get_worker(&data->workers, i);
+                WorkerStatus w_status = vi_irq_worker_get_mode(worker);
+
+                if ( w_status != WorkerStatus_Init && w_status != WorkerStatus_Dead )
+                {
+                    log("destroying workder: %zu", i);
+                    vi_irq_worker_destroy(worker);
+                }
             }
+
+            span_destroy(&data->workers);
+            free(dispatcher->non_movable_data);
         }
 
-        span_destroy(&dispatcher->workers);
         if ( dispatcher->funcs ) free(dispatcher->funcs);
-        if ( dispatcher->dispatcher ) free(dispatcher->dispatcher);
     }
 }
 
@@ -305,8 +324,11 @@ static void* _th_dispatcher(void* arg)
     char log_buffer[128] = {0};
 
 //========================================init==================================================
-    assert(dispatcher);
-    vi_worker_status_set_working_mode(&dispatcher->dispatcher->base, WorkerStatus_Working);
+    assert(dispatcher && dispatcher->non_movable_data);
+
+    struct _VirtualInterruptNonMovableData* data = dispatcher->non_movable_data;
+
+    vi_worker_status_set_working_mode(&data->dispatcher.base, WorkerStatus_Working);
 
     if ( _vi_disable_all_signals() != VIError_None )
     {
@@ -325,14 +347,14 @@ start_dispatcher_loop:
         //waiting for something to do
         log(
                 "waiting for something to do: read: %ld, write: %ld, wamr_exception:--%s--",
-                atomic_load(&dispatcher->channel_ready_ureq.read),
-                atomic_load(&dispatcher->channel_ready_ureq.write),
+                atomic_load(&data->channel_ready_ureq.read),
+                atomic_load(&data->channel_ready_ureq.write),
                 _vi_get_wamr_exception()
            );
 
-        while ( vi_dispatcher_get_requests(dispatcher->dispatcher) == 0 )
+        while ( vi_dispatcher_get_requests(&data->dispatcher) == 0 )
         {
-            vi_worker_status_set_working_mode(&dispatcher->dispatcher->base, WorkerStatus_Suspended);
+            vi_worker_status_set_working_mode(&data->dispatcher.base, WorkerStatus_Suspended);
             vi_worker_status_self_suspend();
         }
 
@@ -341,24 +363,24 @@ start_dispatcher_loop:
             log_err("failed to disable signals");
         }
 
-        vi_worker_status_set_working_mode(&dispatcher->dispatcher->base, WorkerStatus_Working);
+        vi_worker_status_set_working_mode(&data->dispatcher.base, WorkerStatus_Working);
         log("woke up");
 
-        if ( !atomic_load(&dispatcher->dispatcher->run) )
+        if ( !atomic_load(&data->dispatcher.run) )
         {
             log("received termination request, stopping execution");
             break;
         }
 
-        if ( vi_dispatcher_get_requests(dispatcher->dispatcher) == 0 )
+        if ( vi_dispatcher_get_requests(&data->dispatcher) == 0 )
         {
             log_err("INVARIANT NOT RESPECTED: n_requests == 0");
             continue;
         }
 
-        vi_dispatcher_consume_request(dispatcher->dispatcher);
+        vi_dispatcher_consume_request(&data->dispatcher);
 
-        if ( !atomic_load(&dispatcher->dispatcher->run) )
+        if ( !atomic_load(&data->dispatcher.run) )
         {
             log("received termination request");
             break;
@@ -436,7 +458,7 @@ start_dispatcher_loop:
         //set up a new executing_worker to handle the user request
         //IF the main was running it is be suspended
         IrqLine ureq;
-        spscq_pop(&dispatcher->channel_ready_ureq, &ureq, &spscq_op_ok);
+        spscq_pop(&data->channel_ready_ureq, &ureq, &spscq_op_ok);
         old_worker = _get_active_worker(dispatcher);
         if(spscq_op_ok && ( !old_worker || (size_t) ureq >= old_worker->func_index ) )
         {
@@ -446,7 +468,7 @@ start_dispatcher_loop:
             assert(new_worker);
 
             //stop main board, if it's running
-            vi_main_logic_suspend(&dispatcher->main_fun_status);
+            vi_main_logic_suspend(&data->main_fun_status);
 
             //stop current worker (i)
             if( old_worker )
@@ -495,11 +517,11 @@ start_dispatcher_loop:
 
             //stop main board, if it's running. It should not be needed but it cause no damage
             //to be sure
-            vi_main_logic_suspend(&dispatcher->main_fun_status);
+            vi_main_logic_suspend(&data->main_fun_status);
 
             assert(
                     dispatcher->executing_worker == 1 &&
-                    vi_main_logic_get_mode(&dispatcher->main_fun_status) == WorkerStatus_Suspended
+                    vi_main_logic_get_mode(&data->main_fun_status) == WorkerStatus_Suspended
                   );
 
             //start thread (1)
@@ -513,18 +535,18 @@ start_dispatcher_loop:
 
         assert(!(
                     dispatcher->executing_worker > 0 &&
-                    vi_main_logic_get_mode(&dispatcher->main_fun_status) == WorkerStatus_Working
+                    vi_main_logic_get_mode(&data->main_fun_status) == WorkerStatus_Working
                 ));
 
         //IF no interrupt worker is running AND the main thread is not running
         //THAN resume the main thread
         if (
                 !dispatcher->executing_worker &&
-                vi_main_logic_get_mode(&dispatcher->main_fun_status) == WorkerStatus_Suspended
+                vi_main_logic_get_mode(&data->main_fun_status) == WorkerStatus_Suspended
            )
         {
             log("no worker is running");
-            vi_main_logic_resume(&dispatcher->main_fun_status);
+            vi_main_logic_resume(&data->main_fun_status);
         }
 
         //IF and exception is caught signal it to the user and reset it
@@ -538,7 +560,7 @@ start_dispatcher_loop:
     }
 
 //====================================end==================================================
-    vi_worker_status_set_working_mode(&dispatcher->dispatcher->base, WorkerStatus_Dead);
+    vi_worker_status_set_working_mode(&data->dispatcher.base, WorkerStatus_Dead);
     log("dead");
     return (void*) res;
 }
@@ -554,9 +576,13 @@ static inline VIIrqWorkerStatus* _prepare_new_worker(
 
     assert(d);
 
+    struct _VirtualInterruptNonMovableData* data = d->non_movable_data;
+
+    assert(data);
+
     d->executing_worker++;
 
-    if ( d->executing_worker >= span_len(&d->workers) )
+    if ( d->executing_worker >= span_len(&data->workers) )
     {
         const size_t new_stack_size = d->executing_worker << 1;
         VIError vi_error;
@@ -564,17 +590,17 @@ static inline VIIrqWorkerStatus* _prepare_new_worker(
         assert( new_stack_size && new_stack_size > d->executing_worker );
 
         log("reached stack limit, expanding to: %zu", new_stack_size);
-        span_resize(&d->workers, new_stack_size, &span_out_status);
+        span_resize(&data->workers, new_stack_size, &span_out_status);
         assert( span_out_status == SpanError_None );
 
         for (size_t i=d->executing_worker + 1; i<=new_stack_size; i++)
         {
-            worker = _get_worker(&d->workers, i);
+            worker = _get_worker(&data->workers, i);
             assert( worker );
 
             assert( d->module_inst );
             log("init new worker: %zu", i);
-            vi_error = vi_irq_worker_init(worker, d->dispatcher, d->funcs, d->module_inst);
+            vi_error = vi_irq_worker_init(worker, &data->dispatcher, d->funcs, d->module_inst);
             assert(vi_error == VIError_None);
         }
 
@@ -591,8 +617,8 @@ static inline VIIrqWorkerStatus* _prepare_new_worker(
 
 static inline VIIrqWorkerStatus* _get_active_worker(const VIDispatcher* const restrict d)
 {
-    assert(d);
-    return _get_worker(&d->workers, d->executing_worker);
+    assert( d && d->non_movable_data );
+    return _get_worker(&d->non_movable_data->workers, d->executing_worker);
 }
 
 const char* vidispatcher_error_to_str(const VIError err)

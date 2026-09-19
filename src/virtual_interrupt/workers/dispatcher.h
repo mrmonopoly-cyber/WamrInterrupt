@@ -28,7 +28,7 @@ static inline VIError vi_dispatcher_status_signal(VIDispatcherStatus* const rest
 {
     assert(status);
     atomic_fetch_add(&status->n_requests, 1);
-    return vi_worker_status_signal(&status->base);
+    return vi_worker_status_resume(&status->base);
 }
 
 static inline size_t vi_dispatcher_get_requests(const VIDispatcherStatus* const status)

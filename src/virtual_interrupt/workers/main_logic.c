@@ -172,7 +172,7 @@ static void* _th_main_thread(void* arg)
     //INFO: if we reach here it means that the main has ended for any reason which is probably
     //an error unless the hole program ended
     log("main ended");
-    if( (res=vi_worker_status_signal(&th_arg.status->p_dispatcher_status->base)) != VIError_None )
+    if( (res=vi_dispatcher_status_signal(th_arg.status->p_dispatcher_status)) != VIError_None )
     {
         char buf[64] = {0};
         strerror_r(errno, buf, sizeof(buf));

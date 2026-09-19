@@ -37,14 +37,18 @@ typedef MINHEAP_TEMPLATE(IrqLine, WAIT_QUEUE_CAP) MinheapUReq;
 
 typedef struct __VirtualInterruptDispatcher
 {
-    VIMainLogicStatus main_fun_status;
-    VISpanWorkerStatus workers;
-    VIDispatcherStatus* dispatcher;
+    struct _VirtualInterruptNonMovableData
+    {
+        VIMainLogicStatus main_fun_status;
+        VISpanWorkerStatus workers;
+        VIDispatcherStatus dispatcher;
+
+        SPSCQ_UReq channel_ready_ureq;
+    }*non_movable_data;
 
     IrqFuncHandler* funcs;
     size_t n_funcs;
 
-    SPSCQ_UReq channel_ready_ureq;
     MinheapUReq minheap_ureq;
 
     size_t executing_worker; //INFO: 0 means None, K means workers[k-1] IS CURRENTLY EXECUTING
@@ -129,7 +133,7 @@ static inline size_t debug_vidispatcher_n_requests(const VIDispatcher* const res
 
     if ( dispatcher )
     {
-        res = vi_dispatcher_get_requests(dispatcher->dispatcher);
+        res = vi_dispatcher_get_requests(&dispatcher->non_movable_data->dispatcher);
     }
 
     return res;

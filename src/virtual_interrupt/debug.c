@@ -19,7 +19,9 @@ VIError debug_vidispatcher_get_workers_status(
     VIIrqWorkerStatus* irq_worker;
     if ( !dispatcher || !out || !n_out || *out ) return VIError_InvalidInput;
 
-    const size_t n_irq_workers =span_len(&dispatcher->workers);
+    struct _VirtualInterruptNonMovableData* data = dispatcher->non_movable_data;
+
+    const size_t n_irq_workers =span_len(&data->workers);
     const size_t n_workers = 2 + n_irq_workers;
 
     char log_buffer[64] = {0};
@@ -36,17 +38,17 @@ VIError debug_vidispatcher_get_workers_status(
 
     o_buffer[0] = (VIDWorkerStatus){
         .t = VIDWorkerID_Dispatcher,
-        .status = vi_worker_status_get_working_mode(&dispatcher->dispatcher->base),
+        .status = vi_worker_status_get_working_mode(&data->dispatcher.base),
     };
 
     o_buffer[1] = (VIDWorkerStatus){
         .t = VIDWorkerID_Main,
-        .status = vi_main_logic_get_mode(&dispatcher->main_fun_status),
+        .status = vi_main_logic_get_mode(&data->main_fun_status),
     };
 
-    FOR_EACH_IRQ_WORKER_INDEX(i, &dispatcher->workers)
+    FOR_EACH_IRQ_WORKER_INDEX(i, &data->workers)
     {
-        irq_worker = _get_worker(&dispatcher->workers, i);
+        irq_worker = _get_worker(&data->workers, i);
         if ( irq_worker )
         {
             o_buffer[2 + ( i - 1) ] = (VIDWorkerStatus){ //i starts from 1
