@@ -44,9 +44,10 @@ typedef struct __VirtualInterruptDispatcher
         VIDispatcherStatus dispatcher;
 
         SPSCQ_UReq channel_ready_ureq;
+
+        IrqFuncHandler funcs[];
     }*non_movable_data;
 
-    IrqFuncHandler* funcs;
     size_t n_funcs;
 
     MinheapUReq minheap_ureq;

@@ -55,7 +55,6 @@ VIError vidispatcher_init_full(
         const VIDispatcherConf conf)
 {
     VIError res = VIError_None;
-    IrqFuncHandler* funcs = NULL;
     struct _VirtualInterruptNonMovableData* non_movable_data = NULL;
     const size_t depth = conf.depth;
     char log_buffer[128] = {0};
@@ -79,10 +78,9 @@ VIError vidispatcher_init_full(
     vi_log_file_init(conf.log_file_base_path);
 
 //==========================================init memory===========================================
-    non_movable_data = malloc(sizeof(*non_movable_data));
-    funcs = malloc(n_lines * sizeof(*funcs));
+    non_movable_data = malloc(sizeof(*non_movable_data) + n_lines * sizeof(*non_movable_data->funcs));
 
-    if ( !funcs || !non_movable_data)
+    if ( !non_movable_data)
     {
         _vi_set_errno(errno);
         goto end;
@@ -170,7 +168,7 @@ VIError vidispatcher_init_full(
                     res = vi_irq_worker_init(
                         worker,
                         &non_movable_data->dispatcher,
-                        funcs,
+                        non_movable_data->funcs,
                         module_inst)
             ) != VIError_None )
         {
@@ -182,7 +180,7 @@ VIError vidispatcher_init_full(
 
 //=========================================assigning field to dispatcher=======================
     dispatcher->n_funcs = n_lines;
-    dispatcher->funcs = funcs;
+    // dispatcher->funcs = funcs;
     dispatcher->module_inst = module_inst;
     dispatcher->non_movable_data = non_movable_data;
 
@@ -221,7 +219,7 @@ VIError vidispatcher_assign_irq_to_line(
     }
 
     log("setting irq line %zu, to %p", line, irq_handler);
-    dispatcher->funcs[line] = irq_handler;
+    dispatcher->non_movable_data->funcs[line] = irq_handler;
 
     return VIError_None;
 }
@@ -310,8 +308,6 @@ void vidispatcher_destroy(VIDispatcher* const restrict dispatcher)
             span_destroy(&data->workers);
             free(dispatcher->non_movable_data);
         }
-
-        if ( dispatcher->funcs ) free(dispatcher->funcs);
     }
 }
 
@@ -598,7 +594,7 @@ static inline VIIrqWorkerStatus* _prepare_new_worker(
 
             assert( d->module_inst );
             log("init new worker: %zu", i);
-            vi_error = vi_irq_worker_init(worker, &data->dispatcher, d->funcs, d->module_inst);
+            vi_error = vi_irq_worker_init(worker, &data->dispatcher, data->funcs, d->module_inst);
             assert(vi_error == VIError_None);
         }
 
