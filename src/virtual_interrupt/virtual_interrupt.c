@@ -245,8 +245,10 @@ VIError vidispatcher_start(VIDispatcher* const restrict dispatcher)
 
     assert( vi_main_logic_get_mode(&data->main_fun_status) == WorkerStatus_Working );
 
-    res =  vi_dispatcher_status_init(&data->dispatcher, _th_dispatcher, dispatcher);
+    res = vi_dispatcher_status_init(&data->dispatcher, _th_dispatcher, dispatcher);
+    if ( res != VIError_None ) return res;
 
+    size_t counter=0;
     VI_LOOP_TRY(
             counter,
             vi_worker_status_get_working_mode(&data->dispatcher.base) == WorkerStatus_Init
@@ -255,6 +257,8 @@ VIError vidispatcher_start(VIDispatcher* const restrict dispatcher)
         log("try %zu: %s waiting dispatcher thread to start", counter, __func__);
         usleep(wait_millis * 1000);
     }
+
+    if ( counter >= VI_MAX_RETRIES ) return VIError_Async;
 
     return res;
 }

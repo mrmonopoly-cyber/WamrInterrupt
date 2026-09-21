@@ -26,8 +26,8 @@
 #define VI_ASYNC_SETS_STATE(ret, ptr)   __attribute__((try_acquire_capability((ret), (ptr))))
 
 #define VI_MAX_RETRIES (32ULL)
-#define VI_LOOP_TRY(COUNTER_NAME, COND) \
-    for( size_t (COUNTER_NAME) = 0; (COUNTER_NAME) < VI_MAX_RETRIES && (COND); (COUNTER_NAME)++ )
+#define VI_LOOP_TRY(COUNTER, COND) \
+    for( (COUNTER) = 0; (COUNTER) < VI_MAX_RETRIES && (COND); (COUNTER)++ )
 
 //============================================types============================================
 
