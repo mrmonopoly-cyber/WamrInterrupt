@@ -72,6 +72,18 @@ int main(int argc, char **argv)
 
     if( args.build || args.run )
     {
+        if ( !vi_program_exsists_on_path(CC) )
+        {
+            nob_log(ERROR,
+                    "C compiler %s not present in your system. Aborting compilation\n"
+                    "If you want to change the compiler set compilation variable CC.\n"
+                    "Example: \n"
+                    "gcc \'-DCC=\"gcc\"\' ./nob.c -o nob\n"
+                    "Be Aware that it may break the compilation"
+                    , CC);
+            return 1;
+        }
+
         Cmd cmd = {0};
         const char* main_src = "src/launcher/main.c";
         if ( 
