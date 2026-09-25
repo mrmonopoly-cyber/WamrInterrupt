@@ -22,6 +22,7 @@ typedef enum
 }VILoggerLevel;
 
 extern VILoggerLevel vi_minimal_log_level;
+extern FILE* vi__log_file;
 
 typedef void (VILogHandler) (VILoggerLevel level, const char* who, const char* msg);
 

@@ -4,7 +4,7 @@
 #include <time.h>
 #include <unistd.h>
 
-static FILE* vi__log_file = NULL;
+FILE* vi__log_file = NULL;
 static char vi__log_file_name[256];
 static VILogHandler* vi__log_handler = &vi_default_log_handler;
 VILoggerLevel vi_minimal_log_level = VILoggerLevel_Info;
