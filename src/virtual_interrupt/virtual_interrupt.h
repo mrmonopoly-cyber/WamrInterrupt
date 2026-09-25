@@ -31,7 +31,6 @@
 #endif // !VI_DEFAULT_LOG_FILE_BASE_PATH
 
 typedef size_t IrqLine;
-typedef size_t ThreadID;
 typedef TEMPLATE_SPSCQ(IrqLine, READY_QUEUE_CAP) SPSCQ_UReq;
 typedef MINHEAP_TEMPLATE(IrqLine, WAIT_QUEUE_CAP) MinheapUReq;
 
