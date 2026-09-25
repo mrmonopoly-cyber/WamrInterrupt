@@ -80,6 +80,14 @@ bool f_build_fakeboard(bool verbose, const char* path_main)
         {
             const char* pwd = get_current_dir_temp();
 
+            if ( !vi_program_exsists_on_path("python") )
+            {
+                nob_log( ERROR, "python is not present in your system: abort");
+                res = false;
+                goto end;
+            }
+
+
             set_current_dir(VI_THIRDPARTY"/wamr/wasm-micro-runtime/wamr-compiler");
             cmd_append(&cmd, "./build_llvm.sh");
             build_ok = cmd_run(&cmd);

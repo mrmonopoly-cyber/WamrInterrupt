@@ -42,6 +42,7 @@ bool f_build_wamr(bool verbose, Procs* procs)
         {"WAMR_BUILD_CUSTOM_NAME_SECTION"      , "1"},
 
         {"CMAKE_EXPORT_COMPILE_COMMANDS"        ,"ON"},
+        {"CMAKE_C_COMPILER"                     ,CC},
         {"CMAKE_BUILD_TYPE"                     ,"Release"},
     };
 

@@ -7,7 +7,9 @@
 //==================================macros======================================================
 #define ArraySize(ARR) (sizeof(ARR)/sizeof(ARR[0]))
 
+#ifndef CC
 #define CC "clang"
+#endif // !CC
 
 #ifndef VI_PROJET_ROOT
 #pragma message "no VI_PROJET_ROOT passed using default value: \".\""
