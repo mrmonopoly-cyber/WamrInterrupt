@@ -55,7 +55,23 @@ bool f_build_wamr(bool verbose, Procs* procs)
     cmd_append(&cmd, "cmake");
     cmd_append(&cmd, "-S", wamr_path);
     cmd_append(&cmd, "-B", BUILD_DIR"/wamr");
-    cmd_append(&cmd, "-G", "Ninja");
+    cmd_append(&cmd, "-G");
+    if ( vi_program_exsists_on_path("ninja") )
+    {
+        cmd_append(&cmd, "Ninja");
+    }
+    else if ( vi_program_exsists_on_path("make") )
+    {
+        nob_log(WARNING, "Ninja is not present in your system. Using Makefiles as fallback");
+        cmd_append(&cmd, "Unix Makefiles");
+    }
+    else
+    {
+        nob_log( ERROR, "Ninja or make needs to be installed in your system. Abort");
+        res = false;
+        goto end;
+    }
+
 
     vi_apply_global_definitions(&cmd, (ArrayViewGDef) FAT_ARRAY_INIT(build_gen_defs));
 

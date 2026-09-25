@@ -97,7 +97,23 @@ bool f_build_fakeboard(bool verbose, const char* path_main)
                 cmd_append(&cmd, "cmake");
                 cmd_append(&cmd, "-B", "build");
                 cmd_append(&cmd, "-S", ".");
-                cmd_append(&cmd, "-G", "Ninja");
+                cmd_append(&cmd, "-G");
+                if ( vi_program_exsists_on_path("ninja") )
+                {
+                    cmd_append(&cmd, "Ninja");
+                }
+                else if ( vi_program_exsists_on_path("make") )
+                {
+                    nob_log(WARNING, "Ninja is not present in your system. Using Makefiles as fallback");
+                    cmd_append(&cmd, "Unix Makefiles");
+                }
+                else
+                {
+                    nob_log( ERROR, "Ninja or make needs to be installed in your system. Abort");
+                    res = false;
+                    goto end;
+                }
+
                 build_ok = cmd_run(&cmd);
             }
 
