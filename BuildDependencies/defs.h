@@ -16,7 +16,10 @@
 #define VI_PROJET_ROOT "."
 #endif // !VI_PROJET_ROOT
 
+#ifndef BUILD_DIR
 #define BUILD_DIR "build"
+#endif // !BUILD_DIR
+
 #define VI_THIRDPARTY VI_PROJET_ROOT"/ThirdParty"
 
 #define O_FILE "main"
