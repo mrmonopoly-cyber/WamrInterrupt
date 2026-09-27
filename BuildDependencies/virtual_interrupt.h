@@ -30,9 +30,15 @@ bool vi_f_build_virtual_interrupt(bool verbose, bool test, bool lsp, VIOutputFor
 
 #define WAMR_IMPLEMENTATION
 #include "wamr.h"
+
+#define CMAKE_IMPLEMENTATION
+#include "build_tools/cmake.h"
+
+#define DEPENDENCY_IMPLEMENTATION
+#include "dependency.h"
+
 #define DEFS_IMPLEMENTATION
 #include "defs.h"
-
 
 typedef struct
 {
@@ -51,7 +57,7 @@ bool vi_f_fetch_deps(void)
     bool res = false;
     Cmd cmd = {0};
 
-    if ( !vi_program_exsists_on_path("git") )
+    if ( !check_dependency("git") )
     {
         nob_log( ERROR, "git is not in your PATH. aborting");
         res = false;
@@ -96,7 +102,7 @@ bool vi_f_build_virtual_interrupt(bool verbose, bool test, bool lsp, VIOutputFor
     }
 
     //source directories
-    FOR_EACH_FAT_ARRAY_STR(vi_default_src_dir_opts(), dir)
+    FOR_EACH_FAT_ARRAY_STR(default_src_dir_opts(), dir)
     {
         if(dir)
         {
@@ -126,18 +132,18 @@ static bool vi_f_check(void)
 
     SourcesList sources = {0};
 
-    if ( !vi_program_exsists_on_path("clang-tidy") )
+    if ( !check_dependency("clang-tidy") )
     {
         nob_log( WARNING, "clang-tidy is not present in your system: static check is skipped");
         return true;
     }
 
     cmd_append(&cmd, "clang-tidy");
-    cmd_append(&cmd, "--config-file="VI_PROJET_ROOT"/.clang-tidy");
+    cmd_append(&cmd, "--config-file=" PROJECT_ROOT "/.clang-tidy");
     cmd_append(&cmd, "--warnings-as-errors=*");
 
     //source directories
-    FOR_EACH_FAT_ARRAY_STR(vi_default_src_dir_opts(), dir)
+    FOR_EACH_FAT_ARRAY_STR(default_src_dir_opts(), dir)
     {
         if ( !(res = walk_dir(dir, vi__f_check_append_sources, .data = &sources)) )
         {
@@ -153,7 +159,7 @@ static bool vi_f_check(void)
     cmd_append(&cmd, "--");
 
     //include path
-    FOR_EACH_FAT_ARRAY_STR(vi_default_include_path_opts(), path)
+    FOR_EACH_FAT_ARRAY_STR(default_include_path_opts(), path)
     {
         if(path) cmd_append(&cmd, temp_sprintf("-I%s", path));
     }
@@ -185,7 +191,7 @@ static bool vi_f_compile(Walk_Entry entry)
 
         if ( args->lsp )
         {
-            if ( !vi_program_exsists_on_path("bear") )
+            if ( !check_dependency("bear") )
             {
                 nob_log(ERROR, "bear is not present on your PATH. aborting");
                 return false;
@@ -202,7 +208,7 @@ static bool vi_f_compile(Walk_Entry entry)
         }
 
         cmd_append(&cmd, CC);
-        vi_apply_all_defualt_compile_opts(&cmd);
+        apply_all_defualt_compile_opts(&cmd);
         cmd_append(&cmd, "-fPIC");
 
         if ( args->test )
@@ -216,7 +222,7 @@ static bool vi_f_compile(Walk_Entry entry)
 
         if ( args->test && !strcmp(file_name, "main.c" ) )
         {
-            entry.path = VI_PROJET_ROOT"/BuildDependencies/dummy_main.c";
+            entry.path = PROJECT_ROOT"/BuildDependencies/dummy_main.c";
         }
 
         cmd_append(&cmd, entry.path);
@@ -256,7 +262,7 @@ static bool vi_f_link(VIOutputFormat format)
 
         case VIOutputFormat_StaticLib:
             {
-                if ( !(res = vi_program_exsists_on_path("ar")) )
+                if ( !(res = check_dependency("ar")) )
                 {
                     nob_log( ERROR, "ar is not present in your PATH. abort" );
                     goto end;
@@ -272,7 +278,7 @@ static bool vi_f_link(VIOutputFormat format)
                 cmd_append(&cmd, CC);
                 cmd_append(&cmd, "-o", BUILD_DIR"/"VI_OLIB_NAME".so");
 
-                vi_apply_all_defualt_linker_opts(&cmd);
+                apply_all_defualt_linker_opts(&cmd);
                 cmd_append(&cmd, "-shared");
 
             }

@@ -11,3 +11,4 @@ fake_board.wasm
 wamrc
 wasi-sdk*
 *.log
+.local_programs/

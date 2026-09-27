@@ -9,16 +9,17 @@ bool f_build_wamr(bool verbose, Procs* procs);
 #ifdef WAMR_IMPLEMENTATION
 
 #include "defs.h"
+#include "build_tools/cmake.h"
 
 bool f_build_wamr(bool verbose, Procs* procs)
 {
     bool res = false;
     Cmd cmd = {0};
 
-    nob_log(INFO, "VI_THIRDPARTY: %s", VI_THIRDPARTY);
+    nob_log(INFO, "THIRDPARTY: %s", THIRDPARTY);
 
     const char* pwd = get_current_dir_temp();
-    const char* wamr_path = VI_THIRDPARTY"/wamr";
+    const char* wamr_path = THIRDPARTY"/wamr";
 
     const GDef build_gen_defs [] =
     {
@@ -46,43 +47,16 @@ bool f_build_wamr(bool verbose, Procs* procs)
         {"CMAKE_BUILD_TYPE"                     ,"Release"},
     };
 
-    if ( !vi_program_exsists_on_path("cmake") )
+    if ( !(res = cmake_configure(
+                wamr_path,
+                BUILD_DIR"/wamr",
+                .global_defs = (ArrayViewGDef) FAT_ARRAY_INIT(build_gen_defs))) )
     {
-        nob_log( ERROR, "cmake is not present in your system: compilation aborted");
-        return false;
-    }
-
-    cmd_append(&cmd, "cmake");
-    cmd_append(&cmd, "-S", wamr_path);
-    cmd_append(&cmd, "-B", BUILD_DIR"/wamr");
-    cmd_append(&cmd, "-G");
-    if ( vi_program_exsists_on_path("ninja") )
-    {
-        cmd_append(&cmd, "Ninja");
-    }
-    else if ( vi_program_exsists_on_path("make") )
-    {
-        nob_log(WARNING, "Ninja is not present in your system. Using Makefiles as fallback");
-        cmd_append(&cmd, "Unix Makefiles");
-    }
-    else
-    {
-        nob_log( ERROR, "Ninja or make needs to be installed in your system. Abort");
-        res = false;
+        nob_log( ERROR, "wamr: failed to configure cmake");
         goto end;
     }
 
-
-    vi_apply_global_definitions(&cmd, (ArrayViewGDef) FAT_ARRAY_INIT(build_gen_defs));
-
-    if ( !( res = cmd_run(&cmd) ) ) goto end;
-
-    cmd_append(&cmd, "cmake");
-    cmd_append(&cmd, "--build", BUILD_DIR"/wamr");
-
-    if ( verbose ) cmd_append(&cmd, "--verbose");
-
-    if ( !( res = cmd_run(&cmd, .async = procs) ) ) goto end;
+    if ( !(res = cmake_build(BUILD_DIR"/wamr", .verbose = verbose, .async = procs)) ) goto end;
 
 end:
     cmd_free(cmd);

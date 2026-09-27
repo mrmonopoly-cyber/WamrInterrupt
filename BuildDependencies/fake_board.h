@@ -18,6 +18,9 @@ bool f_build_fakeboard(bool verbose, const char* path_main);
 
 #ifdef FAKE_BOARD_IMPLEMENTATION
 #include "defs.h"
+#include "dependency.h"
+#include "build_tools/cmake.h"
+
 bool f_build_fakeboard(bool verbose, const char* path_main)
 {
     bool res = false;
@@ -36,7 +39,7 @@ bool f_build_fakeboard(bool verbose, const char* path_main)
     {
         if ( !file_exists(WASI_SDK_NAME".tar.gz") )
         {
-            if ( !vi_program_exsists_on_path("wget") )
+            if ( !check_dependency("wget") )
             {
                 nob_log( ERROR, "wget is not present in your system: abort");
                 res = false;
@@ -48,7 +51,7 @@ bool f_build_fakeboard(bool verbose, const char* path_main)
             if ( !(res = cmd_run(&cmd)) ) goto end;
         }
 
-        if ( !vi_program_exsists_on_path("tar") )
+        if ( !check_dependency("tar") )
         {
             nob_log( ERROR, "tar is not present in your system: abort");
             res = false;
@@ -60,11 +63,11 @@ bool f_build_fakeboard(bool verbose, const char* path_main)
         if ( !(res = cmd_run(&cmd)) ) goto end;
     }
 
-    if ( !file_exists(VI_THIRDPARTY"/wamr/wasm-micro-runtime/wamr-compiler/build/wamrc") )
+    if ( !file_exists(THIRDPARTY"/wamr/wasm-micro-runtime/wamr-compiler/build/wamrc") )
     {
         bool build_ok = false;
 
-        if ( !vi_program_exsists_on_path("git") )
+        if ( !check_dependency("git") )
         {
             nob_log( ERROR, "git is not present in your system: abort");
             res = false;
@@ -72,7 +75,7 @@ bool f_build_fakeboard(bool verbose, const char* path_main)
         }
 
         cmd_append(&cmd, "git");
-        cmd_append(&cmd, "-C", VI_THIRDPARTY"/wamr/wasm-micro-runtime");
+        cmd_append(&cmd, "-C", THIRDPARTY"/wamr/wasm-micro-runtime");
         cmd_append(&cmd, "apply");
         cmd_append(&cmd, "../wamrc_build.patch");
         if ( !(res = cmd_run(&cmd)) ) goto end;
@@ -80,7 +83,7 @@ bool f_build_fakeboard(bool verbose, const char* path_main)
         {
             const char* pwd = get_current_dir_temp();
 
-            if ( !vi_program_exsists_on_path("python") )
+            if ( !check_dependency("python") )
             {
                 nob_log( ERROR, "python is not present in your system: abort");
                 res = false;
@@ -88,41 +91,18 @@ bool f_build_fakeboard(bool verbose, const char* path_main)
             }
 
 
-            set_current_dir(VI_THIRDPARTY"/wamr/wasm-micro-runtime/wamr-compiler");
+            set_current_dir(THIRDPARTY"/wamr/wasm-micro-runtime/wamr-compiler");
             cmd_append(&cmd, "./build_llvm.sh");
             build_ok = cmd_run(&cmd);
 
             if ( build_ok )
             {
-                cmd_append(&cmd, "cmake");
-                cmd_append(&cmd, "-B", "build");
-                cmd_append(&cmd, "-S", ".");
-                cmd_append(&cmd, "-G");
-                if ( vi_program_exsists_on_path("ninja") )
-                {
-                    cmd_append(&cmd, "Ninja");
-                }
-                else if ( vi_program_exsists_on_path("make") )
-                {
-                    nob_log(WARNING, "Ninja is not present in your system. Using Makefiles as fallback");
-                    cmd_append(&cmd, "Unix Makefiles");
-                }
-                else
-                {
-                    nob_log( ERROR, "Ninja or make needs to be installed in your system. Abort");
-                    res = false;
-                    goto end;
-                }
-
-                build_ok = cmd_run(&cmd);
+                build_ok = cmake_configure(".", "build");
             }
 
             if ( build_ok )
             {
-                cmd_append(&cmd, "cmake");
-                cmd_append(&cmd, "--build", "build");
-                cmd_append(&cmd, "--config", "Release");
-                build_ok = cmd_run(&cmd);
+                build_ok = cmake_build("build");
             }
 
 
@@ -130,7 +110,7 @@ bool f_build_fakeboard(bool verbose, const char* path_main)
         }
 
         cmd_append(&cmd, "git");
-        cmd_append(&cmd, "-C", VI_THIRDPARTY"/wamr/wasm-micro-runtime");
+        cmd_append(&cmd, "-C", THIRDPARTY"/wamr/wasm-micro-runtime");
         cmd_append(&cmd, "apply", "-R");
         cmd_append(&cmd, "../wamrc_build.patch");
         if ( !(res = cmd_run(&cmd)) || !build_ok ) goto end;
@@ -169,7 +149,7 @@ bool f_build_fakeboard(bool verbose, const char* path_main)
 
     //./ThirdParty/wasm-micro-runtime/wamr-compiler/build/wamrc --emit-custom-sections=name -o fake_board.aot fake_board.wasm
 
-    cmd_append(&cmd, "./"VI_THIRDPARTY"/wamr/wasm-micro-runtime/wamr-compiler/build/wamrc");
+    cmd_append(&cmd, "./"THIRDPARTY"/wamr/wasm-micro-runtime/wamr-compiler/build/wamrc");
     cmd_append(&cmd, "--emit-custom-sections=name");
     cmd_append(&cmd, "-o", "fake_board.aot", "fake_board.wasm");
 

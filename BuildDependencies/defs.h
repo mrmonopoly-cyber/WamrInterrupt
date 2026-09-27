@@ -1,28 +1,37 @@
+//==================================dependencies================================================
 
 #include <assert.h>
 #include <stddef.h>
+#include <string.h>
 
 #include "nob.h"
 
 //==================================macros======================================================
+
+#ifndef DEFS_PREFIX
+#define DEFS_PREFIX
+#endif // !DEFS_PREFIX
+
 #define ArraySize(ARR) (sizeof(ARR)/sizeof(ARR[0]))
 
 #ifndef CC
 #define CC "clang"
 #endif // !CC
 
-#ifndef VI_PROJET_ROOT
-#pragma message "no VI_PROJET_ROOT passed using default value: \".\""
-#define VI_PROJET_ROOT "."
-#endif // !VI_PROJET_ROOT
+#ifndef PROJECT_ROOT
+#define PROJECT_ROOT "."
+#endif // !PROJECT_ROOT
+
+#ifndef O_FILE
+#define O_FILE "main"
+#endif // !O_FILE
 
 #ifndef BUILD_DIR
 #define BUILD_DIR "build"
 #endif // !BUILD_DIR
 
-#define VI_THIRDPARTY VI_PROJET_ROOT"/ThirdParty"
-
-#define O_FILE "main"
+#define THIRDPARTY PROJECT_ROOT"/ThirdParty"
+#define BUILD_DEPS PROJECT_ROOT"/BuildDependencies"
 
 #define FAT_ARRAY_TEMPLATE(T)           \
 struct                                  \
@@ -55,39 +64,38 @@ typedef struct GDef{
     const char* val;
 }GDef;
 
-typedef FAT_ARRAY_TEMPLATE(void)    ArrayViewVoid;
 typedef FAT_ARRAY_TEMPLATE(char*)   ArrayViewString;
 typedef FAT_ARRAY_TEMPLATE(GDef)    ArrayViewGDef;
 #endif // !DEFS_TYPES
-
 //==================================functions declarations======================================
 
-void vi_apply_global_definitions(Cmd* cmd, ArrayViewGDef defs);
+DEFS_PREFIX void apply_global_definitions(Cmd* cmd, ArrayViewGDef defs);
 
-ArrayViewString vi_default_src_dir_opts(void);
-ArrayViewString vi_default_compiler_opts(void);
-ArrayViewString vi_default_linker_opts(void);
-ArrayViewString vi_default_include_path_opts(void);
-ArrayViewGDef vi_default_global_defs_opts(void);
+DEFS_PREFIX ArrayViewString default_src_dir_opts(void);
+DEFS_PREFIX ArrayViewString default_compiler_opts(void);
+DEFS_PREFIX ArrayViewString default_linker_opts(void);
+DEFS_PREFIX ArrayViewString default_include_path_opts(void);
+DEFS_PREFIX ArrayViewGDef default_global_defs_opts(void);
 
-void vi_apply_all_defualt_compile_opts(Cmd* cmd);
-void vi_apply_all_defualt_linker_opts(Cmd* cmd);
+DEFS_PREFIX void apply_all_defualt_compile_opts(Cmd* cmd);
+DEFS_PREFIX void apply_all_defualt_linker_opts(Cmd* cmd);
 
-bool vi_file_has_suffix(
+DEFS_PREFIX bool file_has_suffix(
         const char* const restrict file_name, const size_t len_file_name,
         const char* const restrict suffix, const size_t len_suffix);
 
-bool vi_file_has_suffix_with_null(
+DEFS_PREFIX bool file_has_suffix_with_null(
         const char* const restrict file_name,
         const char* const restrict suffix);
 
-bool vi_program_exsists_on_path(const char* program_name);
+DEFS_PREFIX bool clear_dir(const char* const restrict path);
 
 //================================implementation================================================
 
+// #define DEFS_IMPLEMENTATION //enable for debugging
 #ifdef DEFS_IMPLEMENTATION
 
-void vi_apply_global_definitions(Cmd* cmd, ArrayViewGDef defs)
+DEFS_PREFIX void apply_global_definitions(Cmd* cmd, ArrayViewGDef defs)
 {
     assert(cmd);
 
@@ -106,64 +114,49 @@ void vi_apply_global_definitions(Cmd* cmd, ArrayViewGDef defs)
 
 }
 
-void vi_apply_all_defualt_compile_opts(Cmd* cmd)
+DEFS_PREFIX void apply_all_defualt_compile_opts(Cmd* cmd)
 {
     assert(cmd);
 
     //compiler options
-    FOR_EACH_FAT_ARRAY_STR(vi_default_compiler_opts(), opt)
+    FOR_EACH_FAT_ARRAY_STR(default_compiler_opts(), opt)
     {
         if(opt) cmd_append(cmd, opt);
     }
 
     //include path
-    FOR_EACH_FAT_ARRAY_STR(vi_default_include_path_opts(), path)
+    FOR_EACH_FAT_ARRAY_STR(default_include_path_opts(), path)
     {
         if(path) cmd_append(cmd, temp_sprintf("-I%s", path));
     }
 
     //global definitions
-    vi_apply_global_definitions(cmd, vi_default_global_defs_opts());
+    apply_global_definitions(cmd, default_global_defs_opts());
 }
 
-void vi_apply_all_defualt_linker_opts(Cmd* cmd)
+DEFS_PREFIX void apply_all_defualt_linker_opts(Cmd* cmd)
 {
     assert(cmd);
 
-    FOR_EACH_FAT_ARRAY_STR(vi_default_linker_opts(), opt)
+    FOR_EACH_FAT_ARRAY_STR(default_linker_opts(), opt)
     {
         if(opt) cmd_append(cmd, opt);
     }
 
 }
 
-bool vi_program_exsists_on_path(const char* program_name)
-{
-    bool res=false;
-    Cmd cmd = {0};
-
-    cmd_append(&cmd, "bash");
-    cmd_append(&cmd, "-c");
-    cmd_append(&cmd, temp_sprintf("command -v %s", program_name));
-
-    res = cmd_run(&cmd);
-
-    cmd_free(cmd);
-    return res;
-}
-
-ArrayViewString vi_default_src_dir_opts(void)
+DEFS_PREFIX ArrayViewString default_src_dir_opts(void)
 {
     static const char* opts[] = 
     {
-        VI_PROJET_ROOT"/src/virtual_interrupt",
+        PROJECT_ROOT"/src/virtual_interrupt",
         //add here your sources directory like ThirdParty dependencies sources
     };
 
     return (ArrayViewString) FAT_ARRAY_INIT(opts);
 }
 
-ArrayViewString vi_default_compiler_opts(void)
+DEFS_PREFIX ArrayViewString default_compiler_opts(void)
 {
     static const char* opts[] = 
     {
@@ -180,7 +173,7 @@ ArrayViewString vi_default_compiler_opts(void)
     return (ArrayViewString) FAT_ARRAY_INIT(opts);
 }
 
-ArrayViewString vi_default_linker_opts(void)
+DEFS_PREFIX ArrayViewString default_linker_opts(void)
 {
     static const char* opts[] = 
     {
@@ -195,18 +188,18 @@ ArrayViewString vi_default_linker_opts(void)
     return (ArrayViewString) FAT_ARRAY_INIT(opts);
 }
 
-ArrayViewString vi_default_include_path_opts(void)
+DEFS_PREFIX ArrayViewString default_include_path_opts(void)
 {
     static const char* opts[] = 
     {
-        VI_THIRDPARTY"/wamr/wasm-micro-runtime/core/iwasm/include",
-        VI_THIRDPARTY"/wamr/wasm-micro-runtime/core/iwasm/libraries/thread-mgr",
-        VI_THIRDPARTY"/wamr/wasm-micro-runtime/core/shared/utils",
-        VI_THIRDPARTY"/wamr/wasm-micro-runtime/core/shared/utils/uncommon",
-        VI_THIRDPARTY"/wamr/wasm-micro-runtime/core/shared/platform/include",
-        VI_THIRDPARTY"/wamr/wasm-micro-runtime/core/shared/platform/linux",
+        THIRDPARTY"/wamr/wasm-micro-runtime/core/iwasm/include",
+        THIRDPARTY"/wamr/wasm-micro-runtime/core/iwasm/libraries/thread-mgr",
+        THIRDPARTY"/wamr/wasm-micro-runtime/core/shared/utils",
+        THIRDPARTY"/wamr/wasm-micro-runtime/core/shared/utils/uncommon",
+        THIRDPARTY"/wamr/wasm-micro-runtime/core/shared/platform/include",
+        THIRDPARTY"/wamr/wasm-micro-runtime/core/shared/platform/linux",
 
-        VI_THIRDPARTY"/wamr/wasm-micro-runtime/core/iwasm/interpreter",
+        THIRDPARTY"/wamr/wasm-micro-runtime/core/iwasm/interpreter",
 
         //add here your include path: -I...
         //consider the root of the project the starting source path
@@ -215,11 +208,10 @@ ArrayViewString vi_default_include_path_opts(void)
     return (ArrayViewString) FAT_ARRAY_INIT(opts);
 }
 
-ArrayViewGDef vi_default_global_defs_opts(void)
+DEFS_PREFIX ArrayViewGDef default_global_defs_opts(void)
 {
     static const GDef opts[] = 
     {
-        //wamr features
         {"WASM_ENABLE_THREAD_MGR"               , "0"},
         {"WASM_ENABLE_CUSTOM_NAME_SECTION"      , "1"},
         {"_GNU_SOURCE",                              },
@@ -230,7 +222,7 @@ ArrayViewGDef vi_default_global_defs_opts(void)
     return (ArrayViewGDef) FAT_ARRAY_INIT(opts);
 }
 
-bool vi_file_has_suffix(
+DEFS_PREFIX bool file_has_suffix(
         const char* file_name, const size_t len_file_name,
         const char* suffix, const size_t len_suffix)
 {
@@ -239,11 +231,33 @@ bool vi_file_has_suffix(
     return !strcmp(file_name_suffix, suffix);
 }
 
-bool vi_file_has_suffix_with_null(
+DEFS_PREFIX bool file_has_suffix_with_null(
         const char* const restrict file_name,
         const char* const restrict suffix)
 {
-    return vi_file_has_suffix(file_name, strlen(file_name), suffix, strlen(suffix));
+    return file_has_suffix(file_name, strlen(file_name), suffix, strlen(suffix));
+}
+
+DEFS_PREFIX bool _defs__delete(Walk_Entry entry)
+{
+    delete_file(entry.path);
+    return true;
+}
+
+DEFS_PREFIX bool clear_dir(const char* const restrict path)
+{
+    bool res = false;
+
+    if ( get_file_type(path) == FILE_DIRECTORY )
+    {
+        res = walk_dir(
+                path,
+                _defs__delete,
+                .post_order = true,
+                );
+    }
+
+    return res;
 }
 
 #endif // DEFS_IMPLEMENTATION

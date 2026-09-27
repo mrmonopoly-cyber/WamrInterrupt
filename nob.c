@@ -39,12 +39,15 @@ int main(int argc, char **argv)
     CliArgs args;
 
     GO_REBUILD_URSELF_PLUS(argc, argv,
-            "./BuildDependencies/fake_board.h",
-            "./BuildDependencies/c_cli.h",
-            "./BuildDependencies/cli.h",
-            "./BuildDependencies/wamr.h",
-            "./BuildDependencies/virtual_interrupt.h",
-            "./BuildDependencies/defs.h"
+            BUILD_DEPS"/fake_board.h",
+            BUILD_DEPS"/c_cli.h",
+            BUILD_DEPS"/cli.h",
+            BUILD_DEPS"/wamr.h",
+            BUILD_DEPS"/virtual_interrupt.h",
+            BUILD_DEPS"/dependency.h",
+            BUILD_DEPS"/build_tools/cmake.h",
+            BUILD_DEPS"/build_tools/template.h",
+            BUILD_DEPS"/defs.h"
             );
 
     if ( !cli_parse(&args, argc, argv) )
@@ -72,7 +75,7 @@ int main(int argc, char **argv)
 
     if( args.build || args.run )
     {
-        if ( !vi_program_exsists_on_path(CC) )
+        if ( !check_dependency(CC) )
         {
             nob_log(ERROR,
                     "C compiler %s not present in your system. Aborting compilation\n"
@@ -100,13 +103,13 @@ int main(int argc, char **argv)
 
         if ( args.test )
         {
-            const char* main_src = "./BuildDependencies/dummy_main.c";
+            main_src = "./BuildDependencies/dummy_main.c";
         }
 
         cmd_append(&cmd, CC);
-        vi_apply_all_defualt_compile_opts(&cmd);
+        apply_all_defualt_compile_opts(&cmd);
         cmd_append(&cmd, main_src);
-        vi_apply_all_defualt_linker_opts(&cmd);
+        apply_all_defualt_linker_opts(&cmd);
         cmd_append(&cmd, "-o", O_FILE);
         cmd_append(&cmd, "-L", BUILD_DIR);
         cmd_append(&cmd, "-l", VI_OLIB_BASE_NAME);
