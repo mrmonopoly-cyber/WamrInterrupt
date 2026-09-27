@@ -37,18 +37,14 @@ bool f_build_fakeboard(bool verbose, const char* path_main)
 
     if ( !file_exists(WASI_SDK_NAME"/VERSION") )
     {
-        if ( !file_exists(WASI_SDK_NAME".tar.gz") )
+        if (
+                !file_exists(WASI_SDK_TAR) &&
+                !fetcher_download(DependencyFetcher_Curl, WASI_SDK_MIRROR)
+           )
         {
-            if ( !check_dependency("wget") )
-            {
-                nob_log( ERROR, "wget is not present in your system: abort");
-                res = false;
-                goto end;
-            }
-
-            cmd_append(&cmd, "wget", WASI_SDK_MIRROR);
-            cmd_append(&cmd, "-O", WASI_SDK_TAR);
-            if ( !(res = cmd_run(&cmd)) ) goto end;
+            nob_log(ERROR, "failed downloading: %s. Abort", WASI_SDK_MIRROR);
+            res = false;
+            goto end;
         }
 
         if ( !check_dependency("tar") )

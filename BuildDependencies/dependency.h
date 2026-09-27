@@ -36,6 +36,11 @@ typedef struct
     DependencyInstaller* installer_f;
 }DependencyCheckerOpt;
 
+typedef struct
+{
+    const char* output_dir;
+}FetcherDownloadOpt;
+
 #endif // !DEPENDENCY_TYPES
 
 //===================================declarations================================================
@@ -52,17 +57,78 @@ typedef struct
 DEPENDENCY_PREFIX const char* _check_dependency(const char* name, const DependencyCheckerOpt opt);
 #define check_dependency(NAME, ...) _check_dependency((NAME), ((DependencyCheckerOpt) {__VA_ARGS__}))
 
+DEPENDENCY_PREFIX bool
+_fetcher_download(DependencyFetcher fetcher, const char* mirror, FetcherDownloadOpt opt);
+#define fetcher_download(FETCHER, MIRROR, ...) \
+    _fetcher_download((FETCHER), (MIRROR), ((FetcherDownloadOpt) {__VA_ARGS__}))
+
 // #define DEPENDENCY_IMPLEMENTATION //enable for debugging
 #ifdef DEPENDENCY_IMPLEMENTATION
 //===================================implementation==============================================
 
-DEPENDENCY_PREFIX bool _program_exists_on_path(const char* program_name);
+static const char _fetcher_output_dir;
+static const char _fetcher_input_mirror;
 
-DEPENDENCY_PREFIX const char* _get_fetcher_name(const DependencyFetcher fetcher);
-DEPENDENCY_PREFIX bool _fetcher_download(
-        DependencyFetcher fetcher,
-        const char* mirror,
-        const char* output);
+#define N_MAX_ARGS  (5U)
+#define N_ARGS_CURL (5U)
+#define N_ARGS_WGET (3U)
+#define N_ARGS_GIT  (5U)
+
+static const struct _FetcherInfos
+{
+    const char* prog_name;
+    const char *args[N_MAX_ARGS];
+    size_t n_args;
+}FETCHER_INFOS [] =
+{
+    [DependencyFetcher_Curl] = 
+    {
+        .prog_name = "curl",
+        .args =
+        {
+            "-fL",
+            "--output-dir",
+            &_fetcher_output_dir,
+            "-O",
+            &_fetcher_input_mirror,
+        },
+        .n_args = N_ARGS_CURL,
+    },
+    [DependencyFetcher_Wget] =
+    {
+        .prog_name = "wget",
+        .args =
+        {
+            "-p",
+            &_fetcher_output_dir,
+            &_fetcher_input_mirror,
+        },
+    },
+
+    [DependencyFetcher_Git] =
+    {
+        .prog_name = "git",
+        .args =
+        {
+            "-C",
+            &_fetcher_output_dir,
+            "clone",
+            "--recursive",
+            &_fetcher_input_mirror,
+        },
+    }
+};
+
+static_assert(N_ARGS_CURL <= N_MAX_ARGS, "out of bounds");
+static_assert(N_ARGS_WGET <= N_MAX_ARGS, "out of bounds");
+static_assert(N_ARGS_GIT  <= N_MAX_ARGS, "out of bounds");
+
+#undef N_ARGS_CURL
+#undef N_ARGS_WGET
+#undef N_ARGS_GIT
+#undef N_MAX_ARGS
+
+DEPENDENCY_PREFIX bool _program_exists_on_path(const char* program_name);
 
 DEPENDENCY_PREFIX bool _db_sarch_program(
         const char* prog_name,
@@ -74,7 +140,7 @@ DEPENDENCY_PREFIX const char* _check_dependency(const char* name, const Dependen
 {
     static char temp_buffer[1024];
     const char* res = NULL;
-    const char* fetcher = _get_fetcher_name(opt.fetcher);
+    const char* fetcher = FETCHER_INFOS[opt.fetcher].prog_name;
     Cmd cmd = {0};
 
     if ( !name ) goto end;
@@ -107,7 +173,7 @@ DEPENDENCY_PREFIX const char* _check_dependency(const char* name, const Dependen
                 fetcher,
                 _program_exists_on_path(fetcher) ? "true" : "false",
                 opt.download_mirror,
-                opt.installer_f);
+                (void*) (uintptr_t) opt.installer_f);
         goto end;
     }
 
@@ -116,7 +182,12 @@ DEPENDENCY_PREFIX const char* _check_dependency(const char* name, const Dependen
     mkdir_if_not_exists(DEPENDENCY_LOCAL_PROGRAMS_DB_WORK);
 
     mkdir_if_not_exists(DEPENDENCY_LOCAL_PROGRAMS_DB_WORK);
-    if ( !_fetcher_download(opt.fetcher, opt.download_mirror, DEPENDENCY_LOCAL_PROGRAMS_DB_WORK) )
+    if (
+            !fetcher_download(
+                opt.fetcher,
+                opt.download_mirror,
+                .output_dir= DEPENDENCY_LOCAL_PROGRAMS_DB_WORK)
+       )
     {
         goto end;
     }
@@ -159,56 +230,48 @@ DEPENDENCY_PREFIX bool _program_exists_on_path(const char* program_name)
     return res;
 }
 
-DEPENDENCY_PREFIX const char* _get_fetcher_name(const DependencyFetcher fetcher)
-{
-    switch (fetcher)
-    {
-        case DependencyFetcher_Curl:        return "curl";
-        case DependencyFetcher_Wget:        return "wget";
-        case DependencyFetcher_Git:         return "git";
-        case _DependencyFetcher_Count:      assert(0 && "unreachable");
-    }
-
-    assert(0 && "unreachable");
-}
-
 DEPENDENCY_PREFIX bool _fetcher_download(
         DependencyFetcher fetcher,
         const char* mirror,
-        const char* output)
+        FetcherDownloadOpt opt)
 {
     bool res = false;
     Cmd cmd = {0};
-    const char* fetcher_prog = _get_fetcher_name(fetcher);
 
-    if ( !mirror || !output )
+    const struct _FetcherInfos* infos = NULL;
+    const char* output = opt.output_dir ? opt.output_dir : ".";
+
+    if ( !mirror || !file_exists(output) || fetcher >= _DependencyFetcher_Count )
     {
         goto end;
     }
+    
+    infos = &FETCHER_INFOS[fetcher];
 
-    cmd_append(&cmd, fetcher_prog);
-    switch (fetcher)
+    if ( !_program_exists_on_path(infos->prog_name) )
     {
-        case DependencyFetcher_Curl:
-            {
-                cmd_append(&cmd, "-fL", "--output-dir", output, "-O");
-                cmd_append(&cmd, mirror);
-            }
-            break;
-        case DependencyFetcher_Wget:
-            {
-                cmd_append(&cmd, "-P", output);
-                cmd_append(&cmd, mirror);
-            }
-            break;
-        case DependencyFetcher_Git:
-            {
-                cmd_append(&cmd, "-C", output);
-                cmd_append(&cmd, "clone", "--recursive");
-                cmd_append(&cmd, mirror);
-            }
-            break;
-        case _DependencyFetcher_Count:      assert( 0 && "unreachable" );
+        nob_log(ERROR, "fetcher %s does not exists on path. Abort", infos->prog_name);
+        goto end;
+    }
+
+    cmd_append(&cmd, infos->prog_name);
+
+    for (size_t i=0; i<infos->n_args; i++)
+    {
+        const char* arg = infos->args[i];
+
+        if ( arg == &_fetcher_output_dir )
+        {
+            cmd_append(&cmd, output);
+        }
+        else if (arg == &_fetcher_input_mirror)
+        {
+            cmd_append(&cmd, mirror);
+        }
+        else
+        {
+            cmd_append(&cmd, arg);
+        }
     }
 
     res = cmd_run(&cmd);
