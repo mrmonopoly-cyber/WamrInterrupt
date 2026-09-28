@@ -2,6 +2,7 @@
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -121,10 +122,12 @@ int main(int argc, char *argv[])
         "led_value_i3",
     };
 
+    const size_t pool_size = 40 << 20; //40 MB
     char* buf = NULL;
     uint32_t file_buffer_size = 0;
     bool init_wamr_ok = false;
     char log_buffer[128] = {0};
+    void* pool = NULL;
 
     VIDispatcher vi_dispatcher = {0};
     VIError vi_err = {0};
@@ -175,7 +178,19 @@ int main(int argc, char *argv[])
     vi_log_file_init("vi_launcher");
     vi_minimal_log_level = VILoggerLevel_Trace;
 
-    if ( !(init_wamr_ok = wasm_runtime_init()) )
+    if ( !(pool = malloc(pool_size)) ) 
+    {
+        strerror_r(errno, error_buf, sizeof(error_buf));
+        GOTO_END;
+    }
+
+    RuntimeInitArgs args=
+    {
+        .mem_alloc_option.pool = { .heap_buf = pool, .heap_size = pool_size },
+        .mem_alloc_type = Alloc_With_Pool,
+    };
+
+    if ( !(init_wamr_ok = wasm_runtime_full_init(&args)) )
     {
         GOTO_END_AND_CUSTOM_ERROR("failed wasm runtime init");
     }
@@ -325,7 +340,7 @@ end:
     if ( module )               wasm_runtime_unload(module);
     if ( init_wamr_ok )         wasm_runtime_destroy();
 
-    if ( buf ) free(buf);
+    if ( pool ) free(pool);
 
     fprintf(stderr, "launder done\n");
     return 0;
