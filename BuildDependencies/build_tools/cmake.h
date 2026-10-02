@@ -52,6 +52,8 @@ CMAKE_PREFIX bool
 _cmake_build(const char* build_dir, const CmakeBuildOpt opt);
 #define cmake_build(BUILD_DIR, ...) _cmake_build( (BUILD_DIR), ((CmakeBuildOpt) {__VA_ARGS__}))
 
+CMAKE_PREFIX const char* cmake_get(void);
+
 // #define CMAKE_IMPLEMENTATION //enable for debugging
 #ifdef CMAKE_IMPLEMENTATION
 //===================================implementation==============================================
@@ -61,7 +63,6 @@ _cmake_build(const char* build_dir, const CmakeBuildOpt opt);
 //==================================internal declarations========================================
 CMAKE_PREFIX const char* _cmake_generator_to_str(const CmakeGenerator gen);
 CMAKE_PREFIX const char* _cmake_generator_prog(const CmakeGenerator gen);
-CMAKE_PREFIX const char* _cmake_get(void);
 
 CMAKE_PREFIX bool
 _cmake_configure(const char* CMakeLists_path, const char* build_dir, const CmakeConfigureOpt opt)
@@ -74,7 +75,7 @@ _cmake_configure(const char* CMakeLists_path, const char* build_dir, const Cmake
     if ( 
             !CMakeLists_path ||
             !build_dir ||
-            !(cmake= _cmake_get())
+            !(cmake= cmake_get())
        )
     {
         goto end;
@@ -123,7 +124,7 @@ CMAKE_PREFIX bool _cmake_build(const char* build_dir, const CmakeBuildOpt opt)
     const size_t jobs = opt.jobs && opt.jobs < (size_t) nprocs() ? opt.jobs : (size_t) nprocs();
     const char* cmake = NULL;
 
-    if ( !build_dir || !(cmake = _cmake_get()) )
+    if ( !build_dir || !(cmake = cmake_get()) )
     {
         goto end;
     }
@@ -200,7 +201,7 @@ end:
     return res;
 }
 
-CMAKE_PREFIX const char* _cmake_get(void)
+CMAKE_PREFIX const char* cmake_get(void)
 {
     return check_dependency(
                 "cmake",

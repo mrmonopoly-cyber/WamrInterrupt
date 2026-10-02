@@ -16,10 +16,14 @@ bool f_build_fakeboard(bool verbose, const char* path_main);
 
 //======================================implementation==========================================
 
+#define FAKE_BOARD_IMPLEMENTATION //enable for debugging
 #ifdef FAKE_BOARD_IMPLEMENTATION
+#include <string.h>
+
 #include "defs.h"
 #include "dependency.h"
 #include "build_tools/cmake.h"
+
 
 bool f_build_fakeboard(bool verbose, const char* path_main)
 {
@@ -62,10 +66,18 @@ bool f_build_fakeboard(bool verbose, const char* path_main)
     if ( !file_exists(THIRDPARTY"/wamr/wasm-micro-runtime/wamr-compiler/build/wamrc") )
     {
         bool build_ok = false;
+        const char* cmake = cmake_get();
 
         if ( !check_dependency("git") )
         {
             nob_log( ERROR, "git is not present in your system: abort");
+            res = false;
+            goto end;
+        }
+
+        if ( !cmake )
+        {
+            nob_log( ERROR, "cmake is not present in your system: abort");
             res = false;
             goto end;
         }
@@ -88,8 +100,21 @@ bool f_build_fakeboard(bool verbose, const char* path_main)
 
 
             set_current_dir(THIRDPARTY"/wamr/wasm-micro-runtime/wamr-compiler");
-            cmd_append(&cmd, "./build_llvm.sh");
-            build_ok = cmd_run(&cmd);
+
+            cmd_append(&cmd, "bash");
+            cmd_append(&cmd, "-c");
+            if ( strcmp(cmake, "cmake") )
+            {
+                cmd_append(&cmd,
+                        temp_sprintf("PATH=\"$(dirname '%s'):$PATH\" ./build_llvm.sh", cmake));
+            }
+            else
+            {
+                cmd_append(&cmd, "./build_llvm.sh");
+            }
+
+            (void) cmd_run(&cmd);
+            build_ok = true;
 
             if ( build_ok )
             {

@@ -207,6 +207,7 @@ DEPENDENCY_PREFIX const char* _check_dependency(const char* name, const Dependen
 
 found:
     res = realpath(temp_buffer, NULL);
+    assert( res != NULL );
     nob_log(INFO, "found %s in local db dir: %s at: %s",
             DEPENDENCY_LOCAL_PROGRAMS_DB, name, res);
 
