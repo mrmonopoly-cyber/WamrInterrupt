@@ -11,12 +11,17 @@
 #define WASI_SDK_TAR WASI_SDK_NAME".tar.gz"
 #define WASI_SDK_MIRROR "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-"WASI_SDK_VERSION"/"WASI_SDK_TAR
 
+#define O_FAKE_BOARD_NAME "fake_board"
+#define O_FAKE_BOARD_WASM O_FAKE_BOARD_NAME".wasm"
+#define O_FAKE_BOARD_AOT O_FAKE_BOARD_NAME".aot"
+
 
 bool f_build_fakeboard(bool verbose, const char* path_main);
+bool f_clean_fakeboard(void);
 
 //======================================implementation==========================================
 
-#define FAKE_BOARD_IMPLEMENTATION //enable for debugging
+// #define FAKE_BOARD_IMPLEMENTATION //enable for debugging
 #ifdef FAKE_BOARD_IMPLEMENTATION
 #include <string.h>
 
@@ -163,7 +168,7 @@ bool f_build_fakeboard(bool verbose, const char* path_main)
 
     if(verbose) cmd_append(&cmd, "-v");
     cmd_append(&cmd, "-ggdb");
-    cmd_append(&cmd, "-o", "fake_board.wasm");
+    cmd_append(&cmd, "-o", O_FAKE_BOARD_WASM);
 
     cmd_append(&cmd, path_main);
     if ( !(res = cmd_run(&cmd)) ) goto end;
@@ -172,13 +177,23 @@ bool f_build_fakeboard(bool verbose, const char* path_main)
 
     cmd_append(&cmd, "./"THIRDPARTY"/wamr/wasm-micro-runtime/wamr-compiler/build/wamrc");
     cmd_append(&cmd, "--emit-custom-sections=name");
-    cmd_append(&cmd, "-o", "fake_board.aot", "fake_board.wasm");
+    cmd_append(&cmd, "-o", O_FAKE_BOARD_AOT, O_FAKE_BOARD_WASM);
 
     if ( !(res = cmd_run(&cmd)) ) goto end;
 
 
 
 end:
+    return res;
+}
+
+bool f_clean_fakeboard(void)
+{
+    bool res = true;
+
+    if ( file_exists(O_FAKE_BOARD_WASM) ) delete_file(O_FAKE_BOARD_WASM);
+    if ( file_exists(O_FAKE_BOARD_AOT) ) delete_file(O_FAKE_BOARD_AOT);
+
     return res;
 }
 #endif // FAKE_BOARD_IMPLEMENTATION

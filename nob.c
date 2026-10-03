@@ -131,6 +131,7 @@ int main(int argc, char **argv)
     {
         walk_dir(BUILD_DIR, walk_delete, .post_order = true);
         if ( file_exists(O_FILE) ) delete_file(O_FILE);
+        f_clean_fakeboard();
     }
 
 

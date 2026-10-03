@@ -1,6 +1,5 @@
 #ifndef DEPENDENCY_PREFIX
 #define DEPENDENCY_PREFIX
-#include <assert.h>
 #endif // !DEPENDENCY_PREFIX
 
 #include "defs.h"
@@ -65,7 +64,10 @@ _fetcher_download(DependencyFetcher fetcher, const char* mirror, FetcherDownload
 // #define DEPENDENCY_IMPLEMENTATION //enable for debugging
 #ifdef DEPENDENCY_IMPLEMENTATION
 //===================================implementation==============================================
+#include <string.h>
+#include <assert.h>
 
+static char _db_dir[1024];
 static const char _fetcher_output_dir;
 static const char _fetcher_input_mirror;
 
@@ -141,13 +143,22 @@ DEPENDENCY_PREFIX const char* _check_dependency(const char* name, const Dependen
     static char temp_buffer[1024];
     const char* res = NULL;
     const char* fetcher = FETCHER_INFOS[opt.fetcher].prog_name;
+    const char* temp_work_dir = "unset";
     Cmd cmd = {0};
 
     if ( !name ) goto end;
 
-    if ( !file_exists(DEPENDENCY_LOCAL_PROGRAMS_DB) )
+    if ( !_db_dir[0] )
     {
-        mkdir_if_not_exists(DEPENDENCY_LOCAL_PROGRAMS_DB);
+        const char *pwd = get_current_dir_temp();
+        snprintf(_db_dir, sizeof(_db_dir), "%s/%s", pwd, DEPENDENCY_LOCAL_PROGRAMS_DB);
+    }
+
+    assert( _db_dir );
+    temp_work_dir = temp_sprintf("%s/work", _db_dir);
+    if ( !file_exists(_db_dir) )
+    {
+        mkdir_if_not_exists(_db_dir);
     }
 
     if ( _program_exists_on_path(name) )
@@ -177,25 +188,25 @@ DEPENDENCY_PREFIX const char* _check_dependency(const char* name, const Dependen
         goto end;
     }
 
-    nob_log(INFO, "clearing work dir: %s", DEPENDENCY_LOCAL_PROGRAMS_DB_WORK);
-    clear_dir(DEPENDENCY_LOCAL_PROGRAMS_DB_WORK);
-    mkdir_if_not_exists(DEPENDENCY_LOCAL_PROGRAMS_DB_WORK);
+    nob_log(INFO, "clearing work dir: %s", temp_work_dir);
+    clear_dir(temp_work_dir);
+    mkdir_if_not_exists(temp_work_dir);
 
-    mkdir_if_not_exists(DEPENDENCY_LOCAL_PROGRAMS_DB_WORK);
+    mkdir_if_not_exists(temp_work_dir);
     if (
             !fetcher_download(
                 opt.fetcher,
                 opt.download_mirror,
-                .output_dir= DEPENDENCY_LOCAL_PROGRAMS_DB_WORK)
+                .output_dir= temp_work_dir)
        )
     {
         goto end;
     }
 
-    snprintf(temp_buffer, sizeof(temp_buffer), "%s/%s",DEPENDENCY_LOCAL_PROGRAMS_DB, name);
+    snprintf(temp_buffer, sizeof(temp_buffer), "%s/%s",temp_work_dir, name);
     nob_log(INFO, "installing %s in: %s", name, temp_buffer);
     mkdir_if_not_exists(temp_buffer);
-    if( !opt.installer_f(DEPENDENCY_LOCAL_PROGRAMS_DB_WORK, temp_buffer) )
+    if( !opt.installer_f(temp_work_dir, temp_buffer) )
     {
         goto end;
     }
@@ -208,8 +219,7 @@ DEPENDENCY_PREFIX const char* _check_dependency(const char* name, const Dependen
 found:
     res = realpath(temp_buffer, NULL);
     assert( res != NULL );
-    nob_log(INFO, "found %s in local db dir: %s at: %s",
-            DEPENDENCY_LOCAL_PROGRAMS_DB, name, res);
+    nob_log(INFO, "found %s in local db dir: %s at: %s", temp_work_dir, name, res);
 
 end:
     cmd_free(cmd);
@@ -315,7 +325,8 @@ DEPENDENCY_PREFIX bool _db_sarch_program(
         char* o_buffer,
         const size_t o_buffer_size)
 {
-    const char* root = opt_root ? opt_root : DEPENDENCY_LOCAL_PROGRAMS_DB;
+    assert(_db_dir);
+    const char* root = opt_root ? opt_root : _db_dir;
     _DepDBChecker data = 
     {
         .prog_name = prog_name,
