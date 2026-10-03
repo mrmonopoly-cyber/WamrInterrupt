@@ -154,7 +154,7 @@ DEPENDENCY_PREFIX const char* _check_dependency(const char* name, const Dependen
         snprintf(_db_dir, sizeof(_db_dir), "%s/%s", pwd, DEPENDENCY_LOCAL_PROGRAMS_DB);
     }
 
-    assert( _db_dir );
+    assert( _db_dir[0] );
     temp_work_dir = temp_sprintf("%s/work", _db_dir);
     if ( !file_exists(_db_dir) )
     {
@@ -325,7 +325,7 @@ DEPENDENCY_PREFIX bool _db_sarch_program(
         char* o_buffer,
         const size_t o_buffer_size)
 {
-    assert(_db_dir);
+    assert (_db_dir[0] );
     const char* root = opt_root ? opt_root : _db_dir;
     _DepDBChecker data = 
     {
