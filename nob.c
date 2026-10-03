@@ -1,3 +1,12 @@
+#if 0
+if [[ ! -f ./nob ]]
+then
+echo "Bootrap: nob is not present"
+cc -o nob nob.c;
+fi
+exec ./nob "$@"
+exit 0
+#endif
 #define FAKE_BOARD_IMPLEMENTATION
 #include "BuildDependencies/fake_board.h"
 
