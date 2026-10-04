@@ -123,10 +123,6 @@ static bool vi_f_check(const char* vi_src_root)
         return true;
     }
 
-    // cmd_append(&cmd, "clang-tidy");
-    // cmd_append(&cmd, "--config-file=" PROJECT_ROOT "/.clang-tidy");
-    // cmd_append(&cmd, "--warnings-as-errors=*");
-
     //source directories
     if ( !(res = walk_dir(vi_src_root , vi__f_check_append_sources)) )
     {
