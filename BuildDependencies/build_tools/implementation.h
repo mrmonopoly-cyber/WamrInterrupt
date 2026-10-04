@@ -1,0 +1,19 @@
+#ifndef BUILD_EXCLUDE_TEMPLATE
+#define TEMPLATE_IMPLEMENTATION
+#include "template.h"
+#endif // !BUILD_EXCLUDE_TEMPLATE
+
+#ifndef BUILD_EXCLUDE_PYTHON
+#define PYTHON_IMPLEMENTATION
+#include "python.h"
+#endif // !BUILD_EXCLUDE_PYTHON
+
+#ifndef BUILD_EXCLUDE_CMAKE
+#define CMAKE_IMPLEMENTATION
+#include "cmake.h"
+#endif // !BUILD_EXCLUDE_CMAKE
+
+#ifndef BUILD_EXCLUDE_MAKEFILE
+#define MAKEFILE_IMPLEMENTATION
+#include "makefile.h"
+#endif // !BUILD_EXCLUDE_MAKEFILE
