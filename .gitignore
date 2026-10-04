@@ -12,3 +12,4 @@ wamrc
 wasi-sdk*
 *.log
 .local_programs/
+.old_nob/
