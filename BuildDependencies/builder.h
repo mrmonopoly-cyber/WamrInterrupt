@@ -21,7 +21,9 @@ typedef struct
 
 typedef struct
 {
-    char* compiler;
+    const char* compiler;
+    const char* build_dir;
+    const char* o_file;
     BuilderCompilerOptions compiler_options;
     Procs* async;
     bool lsp;
@@ -35,15 +37,15 @@ typedef struct
 
 typedef struct
 {
-    const char** items;
+    char** items;
     size_t count;
     size_t capacity;
 }BuilderLinkerOptions;
 
 typedef struct
 {
-    char* linker;
-    char* build_dir;
+    const char* linker;
+    const char* build_dir;
     BuilderLinkerOptions linker_options;
     Procs* async;
     bool lsp;
@@ -77,21 +79,29 @@ _builder_link_obj_files(const char* o_file, BuilderLinkFileOpt opt);
 BUILDER_PREFIX bool
 _builder_compile_file_to_obj(const char* file_path, BuilderCompileFileOpt opt)
 {
+    const size_t mark = temp_save();
+    bool res = false;
+    Cmd cmd = {0};
+
     const char* file_name = NULL;
     const char* cc = opt.compiler ? opt.compiler : CC;
-    const char* obj_file = NULL;
-    bool res = false;
-    size_t mark = temp_save();
-    Cmd cmd = {0};
+    const char* obj_file = opt.o_file;
+    const char* build_dir = opt.build_dir ? opt.build_dir : BUILD_DIR;
 
     if ( !file_path ) goto end;
 
-    file_name = temp_file_name(file_path);
-    obj_file = temp_strdup(temp_sprintf("%s/%s.o", BUILD_DIR, file_name));
+    file_name = temp_strdup(temp_file_name(file_path));
+    if ( !obj_file )
+    {
+        obj_file = temp_strdup(temp_sprintf("%s/%s.o", build_dir, file_name));
+    }
 
     NOB_ASSERT( obj_file );
     NOB_ASSERT( file_name );
     NOB_ASSERT( cc );
+    NOB_ASSERT( build_dir );
+
+    if ( !file_exists(build_dir) && !mkdir_if_not_exists(build_dir) ) goto end;
 
     res = true;
     if ( opt.lsp || needs_rebuild1(obj_file, file_path) )
@@ -133,10 +143,7 @@ static bool _builder_walk_compile(Walk_Entry entry)
 
     if( entry.type == FILE_REGULAR && valid_suffix )
     {
-        res = builder_compile_file_to_obj(entry.path,
-                .lsp = comp_args->comp_opt.lsp,
-                .async = comp_args->comp_opt.async,
-                .compiler_options = comp_args->comp_opt.compiler_options);
+        res = _builder_compile_file_to_obj(entry.path, comp_args->comp_opt);
     }
 
     return res;
@@ -164,7 +171,11 @@ _builder_link_obj_files(const char* o_file, BuilderLinkFileOpt opt)
     const char* linker = opt.linker ? opt.linker : CC;
     const char* build_dir = opt.build_dir ? opt.build_dir : BUILD_DIR;
 
+    NOB_ASSERT( o_file );
     NOB_ASSERT( linker );
+    NOB_ASSERT( build_dir );
+
+    if ( !file_exists(build_dir) && !mkdir_if_not_exists(build_dir) ) goto end;
 
     if( !dir_entry_open(build_dir, &dir) ) goto end;
 
@@ -183,7 +194,6 @@ _builder_link_obj_files(const char* o_file, BuilderLinkFileOpt opt)
         }
     }
 
-    cmd_append(&cmd, "-xnone");
     da_append_many(&cmd, opt.linker_options.items, opt.linker_options.count);
 
     if ( opt.lsp )
@@ -197,6 +207,7 @@ _builder_link_obj_files(const char* o_file, BuilderLinkFileOpt opt)
 
 
 end:
+    dir_entry_close(dir);
     temp_rewind(mark);
     cmd_free(cmd);
     return res;

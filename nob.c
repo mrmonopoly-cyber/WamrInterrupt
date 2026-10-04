@@ -9,6 +9,7 @@ exit 0
 #endif
 
 #include "BuildDependencies/build_dependencies.h"
+#include "BuildDependencies/user/user.h"
 
 static CliArgs args;
 
@@ -28,10 +29,21 @@ static bool f_run()
 {
     bool res= false;
     Cmd cmd = {0};
+    Procs procs = {0};
 
-    cmd_append(&cmd, "./"O_FILE);
+    if ( !f_compile_launcher(PROJECT_ROOT"/src/launcher", &procs, args.lsp) ) goto end;
+    if ( !f_build_fakeboard(args.verbose, PROJECT_ROOT"/src/fake_board_src/main.c") ) goto end;
+
+    procs_flush(&procs);
+
+    if ( !f_link_launcher(args.lsp) ) goto end;
+
+    cmd_append(&cmd, "./main");
+    cmd_append(&cmd, O_FAKE_BOARD_AOT);
+
     res = cmd_run(&cmd);
 
+end:
     cmd_free(cmd);
     return res;
 }
@@ -51,40 +63,19 @@ int main(int argc, char **argv)
     if ( args.build || args.run )
     {
         Procs procs = {0};
-        BuilderCompilerOptions comp_opts = {0};
-        ArrayViewString def_comp_opts = default_compiler_opts();
-        da_append_many(&comp_opts, def_comp_opts.data, def_comp_opts.len);
-
-        //source directories
-        FOR_EACH_FAT_ARRAY_STR(default_src_dir_opts(), dir)
+        Procs* p_procs = args.lsp ? NULL : &procs;
+        
+        if ( !f_build_wamr(args.verbose, p_procs, args.lsp) )
         {
-            if( dir )
-            {
-                nob_log(INFO, "compiling sources in src: %s", dir);
-                if(
-                        !builder_compile_dir_files_to_obj(dir,
-                            .suffix = ".c",
-                            .comp_opt =
-                            {
-                            .async = &procs,
-                            .lsp = args.lsp,
-                            .compiler_options = comp_opts,
-                            })
-                  )
-                {
-                    nob_log(ERROR, "failed compiling sources in %s", dir);
-                    return 1;
-                }
-            }
-        }
-
-        procs_flush(&procs);
-
-        if( !f_link() )
-        {
-            nob_log(ERROR, "failed liking");
             return 1;
         }
+        if ( !f_compile_vi_interrupt(PROJECT_ROOT"/src/virtual_interrupt", p_procs, args.lsp) )
+        {
+            return 1;
+        }
+        procs_flush(&procs);
+
+        if ( !f_link_vi_interrupt(args.lsp) ) return 1;
     }
 
 
@@ -96,12 +87,14 @@ int main(int argc, char **argv)
 
     if ( args.clean )
     {
+        f_clean_fakeboard(false);
         if ( file_exists(O_FILE) ) delete_file(O_FILE);
         if ( file_exists(BUILD_DIR) ) clear_dir(BUILD_DIR);
     }
     
     if ( args.clean_all )
     {
+        Dir_Entry dir = {0};
         const char* old = temp_sprintf("%s.old", argv[0]);
 
         UNUSED(delete_file(argv[0]));
@@ -109,6 +102,22 @@ int main(int argc, char **argv)
 
         lsp_clean();
         UNUSED(dependency_clear());
+        UNUSED(f_clean_fakeboard(true));
+
+        dir_entry_open(".", &dir);
+        while( dir_entry_next(&dir) )
+        {
+            if (
+                    get_file_type(dir.name) ==  FILE_REGULAR &&
+                    dir.name[0] != '.' &&
+                    file_has_suffix_with_null(dir.name, ".log")
+               )
+            {
+                delete_file(dir.name);
+            }
+        }
+        dir_entry_close(dir);
+
     }
 
   return 0;

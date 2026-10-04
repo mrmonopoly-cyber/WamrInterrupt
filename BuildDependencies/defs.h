@@ -15,7 +15,7 @@
 #define ArraySize(ARR) (sizeof(ARR)/sizeof(ARR[0]))
 
 #ifndef CC
-#define CC "cc"
+#define CC "clang"
 #endif // !CC
 
 #ifndef PROJECT_ROOT
