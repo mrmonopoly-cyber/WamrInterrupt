@@ -1,5 +1,6 @@
 #include "main_logic.h"
 #include "base.h"
+#include "wasm_export.h"
 
 #include <assert.h>
 #include <errno.h>
@@ -17,7 +18,8 @@ VIError vi_main_logic_init(
         VIMainLogicStatus* const restrict status,
         VIDispatcherStatus* const restrict p_dispatcher_status,
         wasm_function_inst_t f_main,
-        wasm_module_inst_t module_inst
+        wasm_module_inst_t module_inst,
+        void* user_data
         )
 {
     VIError res;
@@ -28,6 +30,7 @@ VIError vi_main_logic_init(
         .module_inst = module_inst,
         .out = &out,
         .status = status,
+        .user_data = user_data,
     };
     assert(status && p_dispatcher_status);
     atomic_init(&out, -1);
@@ -146,6 +149,11 @@ static void* _th_main_thread(void* arg)
         res = VIError_WAMR;
         fail = true;
         goto end;
+    }
+
+    if ( th_arg.user_data )
+    {
+        wasm_runtime_set_user_data(th_exec_env, th_arg.user_data);
     }
 
     if ( (res = _vi_enable_signal(VISignals_Suspend)) != VIError_None )

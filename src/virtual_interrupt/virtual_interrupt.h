@@ -54,6 +54,8 @@ typedef struct __VirtualInterruptDispatcher
     size_t executing_worker; //INFO: 0 means None, K means workers[k-1] IS CURRENTLY EXECUTING
 
     wasm_module_inst_t module_inst;
+
+    void* user_data;
 }VIDispatcher;
 
 typedef struct
@@ -62,6 +64,7 @@ typedef struct
     int resume_signal;
     size_t depth;
     const char* log_file_base_path;
+    void* user_data;
 }VIDispatcherConf;
 
 #define VIDISPATCHERCONF_DEFUALT                                        \
@@ -70,6 +73,7 @@ typedef struct
         .suspend_signal = VI_DEFAULT_SIG_SUSPEND,                       \
         .resume_signal = VI_DEFAULT_SIG_RESUME,                         \
         .log_file_base_path = VI_DEFAULT_LOG_FILE_BASE_PATH,            \
+        .user_data = NULL,                                              \
     }
 
 

@@ -30,6 +30,7 @@ typedef struct
     wasm_module_inst_t module_inst;
     VIIrqWorkerStatus* status;
     atomic_int* out;
+    void* user_data;
 }ThWorkersArg;
 
 typedef SPAN_TEMPLATE(VIIrqWorkerStatus) VISpanWorkerStatus;
@@ -41,7 +42,8 @@ VI_RESULT_TYPE(VIError) vi_irq_worker_init(
         VIIrqWorkerStatus* const restrict status,
         VIDispatcherStatus* const restrict p_status_dispatcher,
         IrqFuncHandler* p_funcs,
-        wasm_module_inst_t module_inst
+        wasm_module_inst_t module_inst,
+        void* user_data
         ) ;
 WorkerStatus vi_irq_worker_get_mode(VIIrqWorkerStatus* const restrict status);
 VI_RESULT_TYPE(VIError) vi_irq_worker_start(VIIrqWorkerStatus* const restrict status);

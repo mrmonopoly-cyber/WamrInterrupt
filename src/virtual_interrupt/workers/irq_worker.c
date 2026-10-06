@@ -1,5 +1,6 @@
 #include "irq_worker.h"
 #include "base.h"
+#include "wasm_export.h"
 
 #include <assert.h>
 #include <pthread.h>
@@ -15,7 +16,8 @@ VIError vi_irq_worker_init(
         VIIrqWorkerStatus* const restrict status,
         VIDispatcherStatus* const restrict p_status_dispatcher,
         IrqFuncHandler* p_funcs,
-        wasm_module_inst_t module_inst
+        wasm_module_inst_t module_inst,
+        void* user_data
         )
 {
     int err;
@@ -26,6 +28,7 @@ VIError vi_irq_worker_init(
         .module_inst = module_inst,
         .status = status,
         .out = &out,
+        .user_data = user_data,
     };
 
     assert(status && p_funcs);
@@ -205,6 +208,11 @@ static void* _th_irq_worker(void* arg)
         res = VIError_WAMR;
         fail = true;
         goto end;
+    }
+
+    if ( th_arg.user_data )
+    {
+        wasm_runtime_set_user_data(status->th_exec_env, th_arg.user_data);
     }
 
     if ( (res = _vi_enable_signal(VISignals_Suspend)) != VIError_None )

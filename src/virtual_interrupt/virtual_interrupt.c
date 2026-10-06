@@ -140,7 +140,8 @@ VIError vidispatcher_init_full(
             &non_movable_data->main_fun_status,
             &non_movable_data->dispatcher,
             main_f,
-            module_inst);
+            module_inst,
+            conf.user_data);
     if ( res != VIError_None) 
     {
         goto end;
@@ -169,7 +170,8 @@ VIError vidispatcher_init_full(
                         worker,
                         &non_movable_data->dispatcher,
                         non_movable_data->funcs,
-                        module_inst)
+                        module_inst,
+                        conf.user_data)
             ) != VIError_None )
         {
             goto end;
@@ -183,6 +185,7 @@ VIError vidispatcher_init_full(
     // dispatcher->funcs = funcs;
     dispatcher->module_inst = module_inst;
     dispatcher->non_movable_data = non_movable_data;
+    dispatcher->user_data = conf.user_data;
 
     return res;
 
@@ -598,7 +601,12 @@ static inline VIIrqWorkerStatus* _prepare_new_worker(
 
             assert( d->module_inst );
             log("init new worker: %zu", i);
-            vi_error = vi_irq_worker_init(worker, &data->dispatcher, data->funcs, d->module_inst);
+            vi_error = vi_irq_worker_init(
+                    worker,
+                    &data->dispatcher,
+                    data->funcs,
+                    d->module_inst,
+                    d->user_data);
             assert(vi_error == VIError_None);
         }
 

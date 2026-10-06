@@ -17,6 +17,7 @@ typedef struct
     VIMainLogicStatus* status;
     wasm_function_inst_t main_f;
     atomic_int* out;
+    void* user_data;
 }ThMainThreadArg;
 
 //==============================================declarations=====================================
@@ -24,7 +25,8 @@ VI_RESULT_TYPE(VIError) vi_main_logic_init(
         VIMainLogicStatus* const restrict status,
         VIDispatcherStatus* const restrict p_dispatcher_status,
         wasm_function_inst_t f_main,
-        wasm_module_inst_t module_inst
+        wasm_module_inst_t module_inst,
+        void* user_data
         ) ;
 
 void vi_main_logic_suspend(VIMainLogicStatus* const restrict status);
