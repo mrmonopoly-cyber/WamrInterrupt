@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../build_tools/build_tools.h"
+#include "../dependency.h"
 
 #define WAMR_BUILD_DIR BUILD_DIR"/wamr"
 
@@ -37,6 +38,28 @@ static bool f_build_wamr(bool verbose, Procs* procs, bool lsp)
         {"CMAKE_C_COMPILER"                     , CC},
         {"CMAKE_BUILD_TYPE"                     , "Release"},
     };
+
+    if ( check_dependency("git") )
+    {
+        cmd_append(&cmd, "git");
+        cmd_append(&cmd, "submodule");
+        cmd_append(&cmd, "update");
+        cmd_append(&cmd, "--init");
+        cmd_append(&cmd, "--recursive");
+        cmd_run(&cmd);
+    }
+    else
+    {
+        nob_log(WARNING,
+                "Git is not present on your PATH. "
+                "If the compilation failed do the following:"
+                " nob -call \n"
+                " gcc nob.c -o nob \n"
+                " <update the submodule manually> \n"
+                " nob \n"
+                "update the submodule and retry"
+                );
+    }
 
     if ( !file_exists(WAMR_BUILD_DIR"/CMakeFiles") && !(res = cmake_configure(
                 wamr_path,
