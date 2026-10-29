@@ -39,6 +39,7 @@ typedef enum __VirtualInterruptError
     VIError_Async,
     VIError_WAMR,
     VIError_Libc,           /* check errno */
+    VIError_Unexpected,
 }VIError;
 
 typedef enum

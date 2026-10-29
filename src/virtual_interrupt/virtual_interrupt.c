@@ -232,7 +232,7 @@ VIError vidispatcher_start(VIDispatcher* const restrict dispatcher)
     const size_t wait_millis = 1;
 
     char log_buffer[64] = {0};
-    VIError res;
+    VIError res = VIError_None;
 
     if ( !dispatcher )
     {
@@ -240,13 +240,15 @@ VIError vidispatcher_start(VIDispatcher* const restrict dispatcher)
     }
 
     struct _VirtualInterruptNonMovableData* data = dispatcher->non_movable_data;
-
-    assert(data);
+    if ( !data ) return VIError_Unexpected;
 
     log("starting dispatcher");
     vi_main_logic_resume(&data->main_fun_status);
 
-    assert( vi_main_logic_get_mode(&data->main_fun_status) == WorkerStatus_Working );
+    if ( vi_main_logic_get_mode(&data->main_fun_status) != WorkerStatus_Working )
+    {
+        return VIError_Unexpected;
+    }
 
     res = vi_dispatcher_status_init(&data->dispatcher, _th_dispatcher, dispatcher);
     if ( res != VIError_None ) return res;
@@ -275,7 +277,7 @@ VIError vidispatcher_trigger_interrupt(VIDispatcher* const restrict dispatcher, 
 
     struct _VirtualInterruptNonMovableData* data = dispatcher->non_movable_data;
 
-    assert(data);
+    if (!data) return VIError_Unexpected;
 
     spscq_push(&data->channel_ready_ureq, line, &spsc_op_ok);
     if ( !spsc_op_ok ) return VIError_Queue;

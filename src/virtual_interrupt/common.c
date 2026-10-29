@@ -137,6 +137,7 @@ VI_COMMON_PREFIX const char* vi_error_to_str(const VIError err)
         case VIError_WAMR:                  return "wamr error";
         case VIError_Async:                 return "failed to exec async operation";
         case VIError_Libc:                  return "libc error";
+        case VIError_Unexpected:            return "unexpected. probably an assert";
           break;
         }
 
